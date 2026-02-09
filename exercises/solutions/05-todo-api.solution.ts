@@ -1,3 +1,4 @@
+export {};
 // ============================================================================
 // SOLUTION 05: Todo REST API
 // Run: npx tsx exercises/solutions/05-todo-api.solution.ts

@@ -1,3 +1,4 @@
+export {};
 // ============================================================================
 // EXERCISE 06: Utility Functions
 // Difficulty: ⭐ Easy | Time target: 10 minutes

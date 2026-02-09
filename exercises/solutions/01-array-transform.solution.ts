@@ -1,3 +1,4 @@
+export {};
 // ============================================================================
 // SOLUTION 01: Array Transformations
 // Run: npx tsx exercises/solutions/01-array-transform.solution.ts

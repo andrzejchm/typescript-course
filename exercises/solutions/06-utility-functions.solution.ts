@@ -1,3 +1,4 @@
+export {};
 // ============================================================================
 // SOLUTION 06: Utility Functions
 // Run: npx tsx exercises/solutions/06-utility-functions.solution.ts

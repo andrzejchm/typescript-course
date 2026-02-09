@@ -1,3 +1,4 @@
+export {};
 // ============================================================================
 // SOLUTION 03: Async Task Queue
 // Run: npx tsx exercises/solutions/03-async-task-queue.solution.ts

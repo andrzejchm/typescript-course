@@ -1,3 +1,4 @@
+export {};
 // ============================================================================
 // EXERCISE 01: Array Transformations
 // Difficulty: ⭐ Easy | Time target: 5 minutes

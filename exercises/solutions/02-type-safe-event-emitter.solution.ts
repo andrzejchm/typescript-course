@@ -1,3 +1,4 @@
+export {};
 // ============================================================================
 // SOLUTION 02: Type-Safe Event Emitter
 // Run: npx tsx exercises/solutions/02-type-safe-event-emitter.solution.ts

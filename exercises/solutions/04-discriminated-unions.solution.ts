@@ -1,3 +1,4 @@
+export {};
 // ============================================================================
 // SOLUTION 04: Discriminated Unions — Type-Safe API Response Handler
 // Run: npx tsx exercises/solutions/04-discriminated-unions.solution.ts

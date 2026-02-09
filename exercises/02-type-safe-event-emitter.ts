@@ -1,3 +1,4 @@
+export {};
 // ============================================================================
 // EXERCISE 02: Type-Safe Event Emitter
 // Difficulty: ⭐⭐ Medium | Time target: 10 minutes

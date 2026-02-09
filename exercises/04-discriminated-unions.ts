@@ -1,3 +1,4 @@
+export {};
 // ============================================================================
 // EXERCISE 04: Discriminated Unions — Type-Safe API Response Handler
 // Difficulty: ⭐⭐ Medium | Time target: 10 minutes
