@@ -15,7 +15,7 @@ npm install
 npm run dev    # opens a watch-mode playground
 ```
 
-## Study Order (~6–7 hours)
+## Study Order (~7–8 hours)
 
 | #  | Lesson                  | Time   | What You'll Learn                        |
 |----|-------------------------|--------|------------------------------------------|
@@ -29,6 +29,7 @@ npm run dev    # opens a watch-mode playground
 | 07 | [Express Basics](lessons/07-express-basics.md) | 25 min | HTTP server, routes, middleware |
 | 09 | [GraphQL Basics](lessons/09-graphql-basics.md) | 20 min | Schema, queries, mutations, resolvers |
 | 10 | [Essential Libraries](lessons/10-essential-libraries.md) | 25 min | React, Tailwind, Prisma, OpenAI, and more |
+| 11 | [PostgreSQL Basics](lessons/11-postgresql-basics.md) | 25 min | SQL CRUD, `pg` driver, tables, relationships |
 | 08 | [Exercises](lessons/08-exercises.md) | 60+ min | Practice problems, interview-style |
 
 ## Interview Tips
