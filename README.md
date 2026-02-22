@@ -15,7 +15,7 @@ npm install
 npm run dev    # opens a watch-mode playground
 ```
 
-## Study Order (~8–9 hours)
+## Study Order (~8.5–9 hours)
 
 | #  | Lesson                  | Time   | What You'll Learn                        |
 |----|-------------------------|--------|------------------------------------------|
@@ -31,6 +31,7 @@ npm run dev    # opens a watch-mode playground
 | 10 | [Essential Libraries](lessons/10-essential-libraries.md) | 25 min | React, Tailwind, Prisma, OpenAI, and more |
 | 11 | [PostgreSQL Basics](lessons/11-postgresql-basics.md) | 25 min | SQL CRUD, `pg` driver, tables, relationships |
 | 12 | [Backend Concepts](lessons/12-backend-concepts.md) | 30 min | N+1, CORS, REST, auth, caching, streaming, workflows |
+| 13 | [Observability Basics](lessons/13-observability-basics.md) | 25 min | Logs, metrics, traces, Sentry, OpenTelemetry, alerts |
 | 08 | [Exercises](lessons/08-exercises.md) | 60+ min | Practice problems, interview-style |
 
 ## Interview Tips
