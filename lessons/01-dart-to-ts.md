@@ -105,4 +105,7 @@ Use `===` and `!==` unless you have a very specific coercion reason.
 3. Create two unrelated classes with the same method shape and assign one to an interface of the other.
 4. Scan one file and replace loose equality with strict equality.
 
-Next: [02-types.md](./02-types.md)
+---
+
+**Previous:** [00-setup.md](./00-setup.md) - Setup  
+**Next:** [02-types.md](./02-types.md) - Types

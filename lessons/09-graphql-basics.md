@@ -226,5 +226,5 @@ Choose the transport that matches client needs and operational maturity.
 
 ---
 
-**Previous:** [07-express-basics.md](./07-express-basics.md) - Express Basics  
-**Next:** [10-essential-libraries.md](./10-essential-libraries.md) - Essential Libraries
+**Previous:** [12-backend-concepts.md](./12-backend-concepts.md) - Backend Concepts  
+**Next:** [13-observability-basics.md](./13-observability-basics.md) - Observability Basics

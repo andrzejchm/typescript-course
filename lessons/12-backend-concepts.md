@@ -192,4 +192,4 @@ If a service is functionally correct but operationally opaque, it is not product
 ---
 
 **Previous:** [11-postgresql-basics.md](./11-postgresql-basics.md) - PostgreSQL Basics  
-**Next:** [13-observability-basics.md](./13-observability-basics.md) - Observability Basics
+**Next:** [09-graphql-basics.md](./09-graphql-basics.md) - GraphQL Basics

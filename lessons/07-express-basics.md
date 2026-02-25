@@ -243,4 +243,4 @@ process.on("SIGINT", () => void shutdown("SIGINT"));
 ---
 
 **Previous:** [06-error-handling.md](./06-error-handling.md) - Error Handling & Validation  
-**Next:** [09-graphql-basics.md](./09-graphql-basics.md) - GraphQL Basics
+**Next:** [11-postgresql-basics.md](./11-postgresql-basics.md) - PostgreSQL Basics

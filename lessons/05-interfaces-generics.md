@@ -159,4 +159,7 @@ Instead of `{ isLoading, isError, isSuccess }`, use one discriminated union stat
 3. Implement `pluck<T, K extends keyof T>(obj, key)` and test inferred return types.
 4. Replace one boolean-heavy UI/domain state with a discriminated union plus exhaustive switch.
 
-Next: [06-error-handling.md](./06-error-handling.md)
+---
+
+**Previous:** [04-arrays-objects.md](./04-arrays-objects.md) - Arrays & Objects  
+**Next:** [06-error-handling.md](./06-error-handling.md) - Error Handling & Validation

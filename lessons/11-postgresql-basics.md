@@ -232,5 +232,5 @@ PostgreSQL reliability comes from discipline in migrations, indexing, and transa
 
 ---
 
-**Previous:** [10-essential-libraries.md](./10-essential-libraries.md) - Essential Libraries  
+**Previous:** [07-express-basics.md](./07-express-basics.md) - Express Basics  
 **Next:** [12-backend-concepts.md](./12-backend-concepts.md) - Backend Concepts

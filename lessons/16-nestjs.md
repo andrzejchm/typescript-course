@@ -981,5 +981,5 @@ Flutter mapping:
 
 ---
 
-**Previous:** [15-microservices-devops.md](./15-microservices-devops.md) - Microservices and DevOps  
+**Previous:** [10-essential-libraries.md](./10-essential-libraries.md) - Essential Libraries  
 **Next:** [08-exercises.md](./08-exercises.md) - Production Exercises

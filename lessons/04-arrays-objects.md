@@ -137,4 +137,7 @@ function itemCount(cart: Cart): number {
 3. Refactor one nested object mutation to immutable spread update.
 4. Implement `totalsByCategory` with `reduce` and add one unit test.
 
-Next: [05-interfaces-generics.md](./05-interfaces-generics.md)
+---
+
+**Previous:** [03-functions-async.md](./03-functions-async.md) - Functions & Async  
+**Next:** [05-interfaces-generics.md](./05-interfaces-generics.md) - Interfaces & Generics

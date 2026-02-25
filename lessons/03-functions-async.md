@@ -160,4 +160,7 @@ In Node.js, heavy sync CPU work blocks all requests in that process. Move heavy 
 4. Replace one `Promise.all` use with `Promise.allSettled` where partial results are acceptable.
 5. Find one sync CPU-heavy function and propose how to move it off the request path.
 
-Next: [04-arrays-objects.md](./04-arrays-objects.md)
+---
+
+**Previous:** [02-types.md](./02-types.md) - Types  
+**Next:** [04-arrays-objects.md](./04-arrays-objects.md) - Arrays & Objects

@@ -268,5 +268,5 @@ Use the analogy to onboard mobile-heavy teams, but keep production decisions bas
 
 ---
 
-**Previous:** [12-backend-concepts.md](./12-backend-concepts.md) - Backend Concepts  
-**Next:** [14-workflow-orchestration.md](./14-workflow-orchestration.md) - Workflow Orchestration in TypeScript
+**Previous:** [09-graphql-basics.md](./09-graphql-basics.md) - GraphQL Basics  
+**Next:** [14-workflow-orchestration.md](./14-workflow-orchestration.md) - Workflow Orchestration

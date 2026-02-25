@@ -176,4 +176,7 @@ type AccountView = Pick<Account, "id" | "email" | "name">;
 4. Replace one unsafe `as` on parsed JSON with `unknown` + type guard validation.
 5. Create `OrderDto` and `Order`, then derive `CreateOrderInput` and `PatchOrderInput` using utility types.
 
-Next: [03-functions-async.md](./03-functions-async.md)
+---
+
+**Previous:** [01-dart-to-ts.md](./01-dart-to-ts.md) - Dart to TypeScript  
+**Next:** [03-functions-async.md](./03-functions-async.md) - Functions & Async

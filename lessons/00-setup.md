@@ -102,4 +102,6 @@ Mental shift: in TS projects, scripts in `package.json` become your team workflo
 4. Run `npm run typecheck`, then introduce and fix one intentional type error.
 5. Create your pre-commit habit: `npm run verify`.
 
-Next: [01-dart-to-ts.md](./01-dart-to-ts.md)
+---
+
+**Next:** [01-dart-to-ts.md](./01-dart-to-ts.md) - Dart to TypeScript

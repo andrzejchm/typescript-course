@@ -327,4 +327,4 @@ Useful analogy for onboarding, but backend behavior must be designed for process
 ---
 
 **Previous:** [13-observability-basics.md](./13-observability-basics.md) - Observability Basics  
-**Next:** [15-microservices-devops.md](./15-microservices-devops.md) - Microservices and DevOps for TypeScript Production Systems
+**Next:** [15-microservices-devops.md](./15-microservices-devops.md) - Microservices and DevOps

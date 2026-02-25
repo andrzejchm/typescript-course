@@ -239,5 +239,5 @@ Useful for communication across teams, but production architecture should always
 
 ---
 
-**Previous:** [14-workflow-orchestration.md](./14-workflow-orchestration.md) - Workflow Orchestration in TypeScript  
-**Next:** [16-nestjs.md](./16-nestjs.md) - NestJS — Structured Backend Framework
+**Previous:** [14-workflow-orchestration.md](./14-workflow-orchestration.md) - Workflow Orchestration  
+**Next:** [10-essential-libraries.md](./10-essential-libraries.md) - Essential Libraries

@@ -165,4 +165,7 @@ function logError(error: unknown, context: Record<string, unknown>): void {
 3. Validate one incoming HTTP payload with Zod before business logic.
 4. Implement `toHttpStatus(error)` and decide where to rethrow vs handle locally in one flow.
 
-Next: [07-express-basics.md](./07-express-basics.md)
+---
+
+**Previous:** [05-interfaces-generics.md](./05-interfaces-generics.md) - Interfaces & Generics  
+**Next:** [07-express-basics.md](./07-express-basics.md) - Express Basics

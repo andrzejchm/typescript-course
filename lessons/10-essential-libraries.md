@@ -191,5 +191,5 @@ This baseline covers most backend services without premature complexity.
 
 ---
 
-**Previous:** [09-graphql-basics.md](./09-graphql-basics.md) - GraphQL Basics  
-**Next:** [11-postgresql-basics.md](./11-postgresql-basics.md) - PostgreSQL Basics
+**Previous:** [15-microservices-devops.md](./15-microservices-devops.md) - Microservices and DevOps  
+**Next:** [16-nestjs.md](./16-nestjs.md) - NestJS
