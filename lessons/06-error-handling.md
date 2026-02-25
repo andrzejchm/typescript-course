@@ -1,268 +1,124 @@
-# 06 — Error Handling & Validation
+# 06 - Error Handling, Validation, and Propagation Strategy
 
-Everything about catching errors, building safe APIs, and validating data at runtime. Code-heavy, Dart comparisons where they help.
+Production systems need predictable failure behavior, not just `try/catch` blocks.
 
-## 1. Try/Catch in TypeScript
+## Why this matters in production
 
-```typescript
-try {
-  const data = JSON.parse(input);
-} catch (error) {
-  // error is `unknown` in strict mode (not Error!)
-  if (error instanceof Error) {
-    console.error(error.message);
-  }
-}
-```
+- Different failures need different actions (retry, alert, user message, fail fast).
+- Typed errors improve observability and recovery.
+- Runtime validation protects trust boundaries where TypeScript cannot.
 
-> **Key difference from Dart:** Caught errors are `unknown`, not typed. You **must** narrow with `instanceof` before accessing properties. In Dart, you can `catch (e)` and get a typed `Exception` — TS gives you nothing until you check.
+## Core concepts with code
+
+### 1) Error taxonomy (operational vs programmer)
 
 ```typescript
-// Dart-style "on TypeError catch (e)" equivalent:
-try {
-  riskyOperation();
-} catch (error) {
-  if (error instanceof TypeError) {
-    console.error("Type error:", error.message);
-  } else if (error instanceof RangeError) {
-    console.error("Range error:", error.message);
-  } else {
-    throw error; // re-throw unknown errors
-  }
-}
-```
+type ErrorKind = "validation" | "not_found" | "conflict" | "dependency" | "internal";
 
-`finally` works the same as Dart:
-
-```typescript
-try {
-  const file = openFile("data.txt");
-  processFile(file);
-} catch (error) {
-  if (error instanceof Error) console.error(error.message);
-} finally {
-  cleanup(); // always runs
-}
-```
-
----
-
-## 2. Custom Error Classes
-
-```typescript
-class NotFoundError extends Error {
-  constructor(public resource: string, public id: string) {
-    super(`${resource} with id ${id} not found`);
-    this.name = "NotFoundError";
-  }
-}
-
-class ValidationError extends Error {
-  constructor(public field: string, message: string) {
+class AppError extends Error {
+  constructor(
+    public kind: ErrorKind,
+    message: string,
+    public metadata: Record<string, unknown> = {},
+  ) {
     super(message);
-    this.name = "ValidationError";
+    this.name = "AppError";
   }
 }
 ```
 
-Usage:
+### 2) Throw typed errors with context
 
 ```typescript
-function getUser(id: string): User {
-  const user = users.find((u) => u.id === id);
-  if (!user) throw new NotFoundError("User", id);
-  return user;
-}
-
-try {
-  const user = getUser("999");
-} catch (error) {
-  if (error instanceof NotFoundError) {
-    console.error(`${error.resource} ${error.id} not found`);
+function requireEmail(email: string | undefined): string {
+  if (!email) {
+    throw new AppError("validation", "email is required", { field: "email" });
   }
+  return email;
 }
 ```
 
-> **Dart comparison:** Same pattern as extending `Exception` or `Error` in Dart. The `this.name = "NotFoundError"` line ensures the error prints with the correct name (otherwise it shows "Error").
-
----
-
-## 3. Result Pattern (No Exceptions)
-
-A functional approach — return success or failure instead of throwing:
-
-```typescript
-type Result<T, E = Error> =
-  | { success: true; data: T }
-  | { success: false; error: E };
-
-function divide(a: number, b: number): Result<number, string> {
-  if (b === 0) return { success: false, error: "Division by zero" };
-  return { success: true, data: a / b };
-}
-
-const result = divide(10, 0);
-if (result.success) {
-  console.log(result.data); // TS knows data exists
-} else {
-  console.log(result.error); // TS knows error exists
-}
-```
-
-> **Dart comparison:** This is like `dartz` `Either<L, R>` or the `result` package's `Result<S, F>`. The discriminated union (`success: true | false`) gives TS the same exhaustive narrowing.
-
-A more realistic example:
-
-```typescript
-type Result<T, E = Error> =
-  | { success: true; data: T }
-  | { success: false; error: E };
-
-async function fetchUser(id: string): Promise<Result<User, string>> {
-  try {
-    const response = await fetch(`/api/users/${id}`);
-    if (!response.ok) {
-      return { success: false, error: `HTTP ${response.status}` };
-    }
-    const user = await response.json();
-    return { success: true, data: user };
-  } catch {
-    return { success: false, error: "Network error" };
-  }
-}
-
-// Caller never needs try/catch
-const result = await fetchUser("123");
-if (!result.success) {
-  console.error(result.error);
-  return;
-}
-console.log(result.data.name); // fully typed
-```
-
----
-
-## 4. Zod for Runtime Validation
-
-TypeScript types are **erased at runtime**. When data comes from outside (API requests, env vars, JSON files), you need runtime validation. Zod is the standard tool.
+### 3) Runtime validation with Zod at boundaries
 
 ```typescript
 import { z } from "zod";
 
-// Define schema (like freezed + json_serializable combined!)
-const UserSchema = z.object({
-  name: z.string().min(1),
+const CreateUserSchema = z.object({
   email: z.string().email(),
-  age: z.number().int().positive().optional(),
+  name: z.string().min(1),
 });
 
-// Infer TypeScript type from schema
-type User = z.infer<typeof UserSchema>;
-// → { name: string; email: string; age?: number }
+type CreateUserInput = z.infer<typeof CreateUserSchema>;
 
-// Validate at runtime
-const result = UserSchema.safeParse(unknownData);
-if (result.success) {
-  const user: User = result.data; // fully typed!
-} else {
-  console.error(result.error.issues);
-  // [{ code: 'too_small', minimum: 1, path: ['name'], message: '...' }]
+function parseCreateUser(payload: unknown): CreateUserInput {
+  const result = CreateUserSchema.safeParse(payload);
+  if (!result.success) {
+    throw new AppError("validation", "invalid create user payload", {
+      issues: result.error.issues,
+    });
+  }
+  return result.data;
 }
 ```
 
-Common Zod patterns:
+### 4) Propagate with translation at layer boundaries
 
 ```typescript
-// Throw on invalid data (use for trusted sources)
-const user = UserSchema.parse(data); // throws ZodError if invalid
-
-// Nested objects
-const OrderSchema = z.object({
-  id: z.string().uuid(),
-  items: z.array(
-    z.object({
-      productId: z.string(),
-      quantity: z.number().int().positive(),
-    }),
-  ),
-  status: z.enum(["pending", "shipped", "delivered"]),
-});
-
-// Transform during validation
-const EnvSchema = z.object({
-  PORT: z.string().transform(Number), // string → number
-  DEBUG: z
-    .string()
-    .transform((s) => s === "true")
-    .default("false"),
-});
-```
-
-> **Dart comparison:** Zod replaces the need for `json_serializable` + `freezed` + manual validation. One tool does schema definition, type inference, and runtime validation.
-
----
-
-## 5. Null/Undefined Handling Patterns
-
-```typescript
-// Optional chaining (same as Dart's ?.)
-const city = user?.address?.city;
-
-// Nullish coalescing (same as Dart's ??)
-const name = input ?? "Anonymous";
-
-// Non-null assertion (use sparingly! like Dart's !)
-const element = document.getElementById("app")!;
-
-// Nullish coalescing assignment
-count ??= 0; // same as: count = count ?? 0
-```
-
-### Type Guard Function
-
-```typescript
-function isDefined<T>(value: T | null | undefined): value is T {
-  return value !== null && value !== undefined;
-}
-
-const items = [1, null, 2, undefined, 3].filter(isDefined);
-// items: number[] — nulls and undefineds removed, type narrowed!
-```
-
-### Exhaustive Null Checks
-
-```typescript
-function getDisplayName(user: User): string {
-  // Handle all the nullable fields
-  const first = user.firstName ?? "";
-  const last = user.lastName ?? "";
-  const full = `${first} ${last}`.trim();
-  return full || user.email; // fallback to email if name is empty
+async function getUserOrThrow(id: string) {
+  const response = await fetch(`https://example.com/users/${id}`);
+  if (response.status === 404) {
+    throw new AppError("not_found", "user not found", { id });
+  }
+  if (!response.ok) {
+    throw new AppError("dependency", "user service failed", { status: response.status });
+  }
+  return response.json();
 }
 ```
 
-| Dart | TypeScript | Purpose |
-|------|-----------|---------|
-| `x?.y` | `x?.y` | Optional chaining |
-| `x ?? y` | `x ?? y` | Nullish coalescing |
-| `x!` | `x!` | Non-null assertion |
-| `x ??= y` | `x ??= y` | Nullish assignment |
-| `if (x != null)` | `if (x != null)` | Null check (one of the few valid uses of `!=`) |
+Catch low, translate once, and rethrow typed errors upward.
 
----
+### 5) Convert errors to transport-safe responses
 
-## Quick Reference
+```typescript
+function toHttpStatus(error: unknown): number {
+  if (error instanceof AppError) {
+    if (error.kind === "validation") return 400;
+    if (error.kind === "not_found") return 404;
+    if (error.kind === "conflict") return 409;
+    if (error.kind === "dependency") return 502;
+  }
+  return 500;
+}
+```
 
-| Pattern | When to Use |
-|---------|-------------|
-| `try/catch` + `instanceof` | Catching errors from libraries, JSON parsing, network calls |
-| Custom error classes | When you need typed errors with extra context |
-| Result pattern | When you want to force callers to handle errors (no surprise throws) |
-| Zod `.safeParse()` | Validating external data (API inputs, env vars, user input) |
-| Zod `.parse()` | Validating trusted data where failure = bug |
-| `?.` / `??` | Accessing potentially missing data |
-| Type guard functions | Filtering arrays, reusable null checks |
+### 6) Dart mapping
 
----
+| Dart | TypeScript |
+|---|---|
+| custom `Exception` hierarchy | custom `Error` classes |
+| `try/catch` with typed checks | `try/catch` + `instanceof` narrowing |
+| JSON validation packages | Zod runtime schemas + inferred types |
 
-**Next:** [07-express-basics.md](./07-express-basics.md) — Building REST APIs with Express
+## Best practices
+
+- Define a small shared error taxonomy for the whole service.
+- Add metadata needed for logs/alerts, but avoid leaking secrets.
+- Validate all external inputs (`HTTP`, env vars, queues, files).
+- Keep one consistent propagation rule per layer.
+
+## Common anti-patterns / pitfalls
+
+- Catching and swallowing errors.
+- Throwing raw strings instead of `Error` objects.
+- Returning unvalidated `JSON.parse` data as trusted types.
+- Mapping every failure to `500` with no context.
+
+## Short practice tasks
+
+1. Introduce an `AppError` type in one module and replace string throws.
+2. Add a Zod schema to validate one incoming payload before business logic.
+3. Implement `toHttpStatus(error)` and map at least 3 typed error kinds.
+4. Audit one catch block and remove swallowed errors.
+
+Next: [07-express-basics.md](./07-express-basics.md)

@@ -1,389 +1,243 @@
 # 15 - Microservices and DevOps for TypeScript Production Systems
 
-If you are coming from Flutter, think of this lesson as the backend equivalent of moving from one app with a few screens to a platform with multiple apps, background workers, feature teams, and strict release safety.
-
-For interviews and real systems, the key is not "microservices everywhere." The key is making clear tradeoffs and choosing the simplest architecture that survives production traffic.
+This lesson focuses on operating real services: architecture decisions, delivery safety, runtime operations, and cost control.
 
 ---
 
-## 1. When to choose monolith vs microservices
+## 1) Decision model: modular monolith vs microservices
 
-Most teams should start with a **modular monolith**:
+Default to a modular monolith until clear pressure exists.
 
-- one deployable service
-- clear internal modules (`auth`, `billing`, `notifications`)
-- one shared repo and fast local development
-- fewer distributed-system failures early on
+### Start with modular monolith when
 
-Why this is usually better first:
+- one team owns most backend domains
+- release cadence can be shared
+- data model is still changing quickly
+- platform operations capacity is limited
 
-- lower operational cost (fewer pipelines, dashboards, incidents)
-- easier refactoring while product requirements are still changing
-- simpler debugging (one process, one call stack)
-- smaller team can move faster
+### Split into microservices when
 
-What microservices give you later:
+- domains have stable boundaries and separate ownership
+- teams need independent deploy/release windows
+- scaling profile differs by domain (for example, search vs checkout)
+- blast-radius isolation is worth added complexity
 
-- independent scaling per domain
-- stronger team ownership boundaries
-- isolated failure domains (a broken notification flow should not kill checkout)
+### Scorecard
 
-Cost/complexity tradeoff:
+Give each item a 0-2 score. `>= 8` usually justifies service split.
 
-- **Monolith pain**: slower deploys, tighter coupling, shared blast radius
-- **Microservice pain**: network failures, eventual consistency, platform overhead, higher DevOps burden
+1. bounded contexts are clear
+2. teams require independent deployments
+3. one domain has distinct scaling needs
+4. observability and on-call are mature
+5. CI/CD and security controls are standardized
 
-Decision checklist:
-
-1. Do we have clear bounded contexts with low overlap?
-2. Do we have 3+ teams needing independent release cycles?
-3. Is one domain scaling very differently from the rest?
-4. Do we have incident response maturity (on-call, monitoring, runbooks)?
-5. Can we afford platform investment (CI/CD, observability, security controls)?
-
-If 3+ answers are "yes," microservices are often reasonable. If not, keep a modular monolith and improve boundaries first.
+If score is low, improve monolith boundaries first.
 
 ---
 
-## 2. Core microservices concepts
-
-- **Service boundaries (bounded contexts):** split by business capability, not by technical layer. Good: `orders-service`, `payments-service`. Bad: `controllers-service`, `database-service`.
-- **Stateless services:** avoid request-specific in-memory state so any instance can serve any request.
-- **API gateway / BFF:** single edge entry for auth, routing, rate limits, and response shaping. For mobile, BFF is like creating one endpoint optimized for the app screen model.
-- **Synchronous calls (REST/gRPC):** good for immediate responses; increases coupling and latency chain.
-- **Async messaging (queues/events):** good for decoupling, retries, and spike smoothing; adds eventual consistency complexity.
-- **Eventual consistency:** data across services converges over time, not in one DB transaction.
-
----
-
-## 3. Recommended service architecture for TypeScript at this scale
-
-Practical baseline for hundreds/thousands of active users:
-
-- **Edge/API Gateway**: auth checks, rate limiting, request routing, coarse caching
-- **Auth Service**: identity, tokens, session policies
-- **Core Domain Services**: users, orders, billing, catalog, etc.
-- **Worker Services**: async jobs (emails, exports, webhooks, reconciliations)
-- **Queue/Broker**: SQS/RabbitMQ/Kafka/NATS for events and commands
-- **Cache**: Redis for hot reads, token/session metadata, rate limit counters
-- **Databases**: Postgres/MySQL per service boundary
-- **Object Storage**: S3/GCS for files, reports, media
-- **Config/Secrets**: parameter store + secrets manager, never hardcoded
-
-Text architecture diagram:
+## 2) Reference runtime architecture
 
 ```text
-Clients (Mobile/Web)
-        |
-        v
-[API Gateway / BFF]
-   |        |         \
-   v        v          v
-[Auth]   [Orders]   [Catalog]  ... Core services
-   |         |           |
-   |         +----+------+---------+
-   |              |                |
-   v              v                v
-[Redis]      [Service DBs]    [Object Storage]
-                  |
-                  v
-            [Queue / Broker] <---- [Webhook Ingest]
-                  |
-                  v
-             [Worker Services]
+Clients -> Edge (Gateway/BFF)
+          -> Domain services (auth, orders, billing, catalog)
+          -> Async workers (emails, reconciliations, exports)
+
+Shared platform components:
+- queue/broker
+- cache (Redis)
+- object storage
+- metrics/log/trace pipeline
+- secrets manager
 ```
+
+Guidelines:
+
+- service boundaries align with business capabilities
+- each service owns its data schema and migrations
+- synchronous calls for user-critical paths; async messaging for side effects
+
+Flutter analogy: Gateway/BFF is like shaping backend responses to match UI screen needs instead of exposing raw domain internals.
 
 ---
 
-## 4. Communication patterns
+## 3) Deployment and runtime strategies
 
-Use the simplest pattern that satisfies the requirement:
+Choose the simplest strategy that meets risk and traffic requirements.
 
-| Pattern | Use it when | Avoid when |
-|--------|-------------|------------|
-| **Request/response** (REST/gRPC) | Caller needs immediate answer (login, price quote) | Long-running/fragile workflows |
-| **Pub/sub events** | Multiple consumers react independently (`order.created`) | You need strict immediate consistency |
-| **Command queue** | One worker should process a task reliably (`generate-report`) | Fan-out to many independent consumers |
-| **Webhooks** | Integrating external systems | You cannot verify signatures/retries/idempotency |
+### Deployment strategies
 
-Rule of thumb:
+- `rolling`: default for low-risk changes
+- `blue-green`: safer cutover for high-risk releases
+- `canary`: gradual traffic shift with SLO guardrails
 
-- interactive user flow -> request/response
-- background side effects -> queue/event
-- external callbacks -> webhook + idempotency + signature validation
+### Runtime platform choices
 
----
+| Platform | Good fit | Tradeoff |
+|---|---|---|
+| Kubernetes | many services/teams, advanced routing | highest ops complexity |
+| ECS/Fargate | AWS teams wanting managed containers | platform-specific constraints |
+| Serverless | bursty/event workloads, small teams | cold starts and runtime limits |
 
-## 5. Data consistency patterns
+### Safe rollout rules
 
-- **Database per service:** each service owns its schema and writes.
-- **Outbox pattern:** write domain state + event record in the same transaction, then publish from outbox asynchronously.
-- **Saga pattern:** coordinate multi-service business flows.
-  - **Orchestration:** central coordinator decides next step.
-  - **Choreography:** services react to each other's events.
-- **Idempotency + deduplication keys:** ensure retries do not create duplicate side effects.
-- **Avoid N+1/chatty calls:** never build APIs that chain many service calls per request if they can be pre-joined, cached, or projected.
-
-Interview line:
-
-"I assume at-least-once delivery and design idempotent handlers with dedupe keys."
+- ship backward-compatible DB changes first
+- then deploy code that uses the new schema
+- gate progressive rollout on error-rate and latency SLOs
+- auto-stop rollout on SLO burn
 
 ---
 
-## 6. Resilience patterns for production
+## 4) CI/CD pipeline for production safety
 
-- **Timeouts:** every outbound call has a hard limit.
-- **Retries:** only for transient errors, with exponential backoff + jitter.
-- **Circuit breaker:** stop hammering unhealthy dependencies.
-- **Bulkheads:** isolate resources (thread pools/queues) per dependency.
-- **Rate limiting/throttling:** protect services and downstream systems.
-- **Dead-letter queue (DLQ):** quarantine poison messages after retry exhaustion.
-- **Graceful shutdown:** stop accepting new work, finish in-flight, close connections.
-- **Health checks:**
-  - liveness: "is process alive?"
-  - readiness: "can process serve traffic now?"
+Minimum pipeline stages:
 
-Retry helper example:
-
-```typescript
-type RetryOptions = {
-  maxAttempts: number;
-  baseDelayMs: number;
-  maxDelayMs: number;
-};
-
-function computeBackoffWithJitterMs(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
-  const backoff = Math.min(maxDelayMs, baseDelayMs * 2 ** (attempt - 1));
-  const jitter = Math.floor(Math.random() * 200);
-  return backoff + jitter;
-}
-
-export async function retry<T>(fn: () => Promise<T>, options: RetryOptions): Promise<T> {
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= options.maxAttempts; attempt += 1) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-      if (attempt === options.maxAttempts) {
-        break;
-      }
-
-      const delayMs = computeBackoffWithJitterMs(attempt, options.baseDelayMs, options.maxDelayMs);
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-    }
-  }
-
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
-}
-```
-
-Health endpoint example:
-
-```typescript
-import type { Request, Response } from "express";
-
-export async function readinessHandler(_req: Request, res: Response): Promise<void> {
-  const dependenciesOk = true; // replace with DB/cache checks
-  if (!dependenciesOk) {
-    res.status(503).json({ status: "not_ready" });
-    return;
-  }
-
-  res.status(200).json({ status: "ready" });
-}
-```
-
-Graceful shutdown example:
-
-```typescript
-import type { Server } from "http";
-
-export function attachGracefulShutdown(server: Server, closeResources: () => Promise<void>): void {
-  const shutdown = async (signal: string): Promise<void> => {
-    console.log(`Received ${signal}, shutting down gracefully`);
-    server.close(async () => {
-      await closeResources();
-      process.exit(0);
-    });
-
-    setTimeout(() => {
-      console.error("Forced shutdown after timeout");
-      process.exit(1);
-    }, 15_000).unref();
-  };
-
-  process.on("SIGTERM", () => {
-    void shutdown("SIGTERM");
-  });
-  process.on("SIGINT", () => {
-    void shutdown("SIGINT");
-  });
-}
-```
-
----
-
-## 7. DevOps foundations for TypeScript services
-
-Docker basics for Node/TS:
-
-- multi-stage builds (`builder` then lightweight runtime)
-- pin Node version and use non-root user
-- keep image small and deterministic
-
-12-factor mindset:
-
-- config in environment variables
-- logs to stdout/stderr
-- stateless processes, disposable instances
-- parity between dev/stage/prod environments
-
-Config and secrets:
-
-- use env vars for non-sensitive config
-- use secrets manager for credentials/keys
-- rotate secrets and audit access
-
-CI/CD pipeline stages:
-
-1. lint + type-check
-2. unit/integration tests
-3. build artifact/container image
-4. dependency + container security scan
+1. format/lint/type-check
+2. unit + integration tests
+3. build immutable artifact/container image
+4. dependency and image vulnerability scan
 5. deploy to staging
-6. smoke tests
-7. progressive prod deploy
+6. smoke + contract tests
+7. progressive production deployment
+8. post-deploy verification (SLIs + key journeys)
 
-Deployment strategies:
+Policy gates:
 
-- **Rolling:** simple default, good for most services
-- **Blue-green:** safer switchovers for high-risk releases
-- **Canary:** expose to small traffic percent first, monitor error/latency
+- block deploy if critical vulnerabilities are open
+- block deploy if migration is not backward-compatible
+- block deploy if error budget is already exhausted
 
-Rollback strategy:
+Example release metadata to attach to each deploy:
 
-- keep last known good artifact ready
-- roll back fast on SLO breach
-- ensure schema changes are backward-compatible before rollout
-
----
-
-## 8. Runtime platform choices
-
-| Platform | Best for | Tradeoffs |
-|----------|----------|-----------|
-| **Kubernetes** | Larger teams, many services, advanced routing/scaling needs | Highest operational complexity |
-| **ECS/Fargate** | AWS teams wanting less ops overhead than K8s | Some platform constraints, AWS-centric |
-| **Serverless** (Lambda/Cloud Functions) | Spiky workloads, small teams, event-driven APIs/jobs | Cold starts, execution limits, local debug complexity |
-
-Simple recommendation matrix:
-
-- **1-2 backend engineers, early product:** serverless or ECS/Fargate
-- **3-8 engineers, moderate scale:** ECS/Fargate or managed K8s
-- **many teams, platform engineering function:** Kubernetes
+- commit SHA
+- changelog summary
+- schema migration version
+- feature-flag toggles
+- rollback command/runbook link
 
 ---
 
-## 9. Observability + SLOs
+## 5) Security and secrets management
 
-Three pillars:
+Security controls should be built into delivery, not added later.
 
-- **Logs**: structured logs with `requestId`, `userId`, `service`, `version`
-- **Metrics**: request count, latency percentiles, queue depth, error rates
-- **Traces**: end-to-end request path across services
+Required controls:
 
-Golden signals:
+- TLS for all external and internal traffic
+- strong service-to-service authentication (JWT/mTLS/identity-based auth)
+- least-privilege IAM per service
+- webhook signature verification + replay protection
+- audit logging for admin and auth actions
 
-- **Latency**
-- **Traffic**
-- **Errors**
-- **Saturation**
+Secrets practices:
 
-SLO/SLI basics:
+- secrets in dedicated manager (not git, not plain env files in repos)
+- short-lived credentials where possible
+- automated rotation with monitoring
+- access scoped to service identity and environment
 
-- **SLI:** measured signal (example: p95 latency under 300 ms)
-- **SLO:** target over time window (example: 99.9% successful requests in 30 days)
-- alert on sustained SLO burn rate, not single noisy spikes
-
----
-
-## 10. Security essentials
-
-- TLS everywhere (external and internal traffic)
-- validate JWT at edge and re-check critical claims in services
-- mTLS or service-to-service auth for internal calls
-- least privilege IAM (service can access only required resources)
-- dependency and container scanning in CI
-- signed webhooks + replay protection
-- audit logging for auth/admin actions
+Never put secrets in application logs, traces, or error payloads.
 
 ---
 
-## 11. Cost/performance levers
+## 6) Rollback and failure handling
 
-- horizontal scaling with autoscaling policies tied to CPU/latency/queue depth
-- database connection pooling (`pg` pool + PgBouncer)
-- caching layers:
-  - in-memory for tiny hot data
-  - Redis for shared hot data/session/rate limits
-  - CDN for static and cacheable API responses
-- queue-based smoothing to absorb spikes and protect core DB
-- right-size instances and set resource limits to avoid noisy-neighbor effects
+Rollback is a first-class production path.
 
----
+Rollback playbook:
 
-## 12. TypeScript-specific best practices
+1. detect SLO regression during rollout
+2. stop traffic progression
+3. rollback to last known good artifact
+4. verify recovery via dashboards and synthetic checks
+5. capture timeline and follow-up actions
 
-- maintain a **shared contracts package** (schemas/types), but keep it focused
-- use **runtime validation** at service boundaries (for example, with Zod)
-- do not create a giant shared `utils` package that couples every service
-- version APIs/events and keep backward compatibility during rollout windows
-- keep strict TypeScript settings enabled for all services
+DB migration safety:
 
----
+- prefer expand/contract migrations
+- keep old and new code paths compatible during transition
+- avoid destructive schema changes in same release as app changes
 
-## 13. Production-ready starter checklist
+Runtime resilience baseline:
 
-1. Clear service ownership and on-call rotation
-2. Health endpoints (`/livez`, `/readyz`)
-3. Timeouts on all outbound calls
-4. Retries with backoff + jitter where safe
-5. Idempotency keys for external side effects
-6. Dead-letter queue configured
-7. Structured logging with correlation IDs
-8. Metrics dashboard for golden signals
-9. Distributed tracing enabled
-10. SLOs defined per critical endpoint
-11. Rate limiting at edge
-12. Secrets manager integrated (no plaintext secrets in repo)
-13. Dependency and container scanning in CI
-14. Zero-downtime deploy strategy tested
-15. Rollback runbook documented and practiced
-16. Database migrations backward-compatible
+- timeouts on all outbound calls
+- retries with exponential backoff + jitter for transient failures
+- circuit breaker on unstable dependencies
+- DLQ for retry-exhausted async jobs
+- graceful shutdown for deploy/scale events
 
 ---
 
-## 14. Interview talk track (60 seconds)
+## 7) Cost controls for microservice environments
 
-"I start with a modular monolith until team and scaling pressure justify splitting by bounded contexts. As traffic grows, I add an API gateway, independent domain services, async workers, Redis cache, and a broker for events/commands. I treat all distributed workflows as at-least-once, so I use idempotency keys, outbox, and saga patterns for consistency. In production, I prioritize resilience with timeouts, retries, circuit breakers, DLQ, and graceful shutdown. I ship through CI/CD with tests and security scans, deploy progressively with canary or rolling releases, and manage reliability through logs, metrics, traces, and SLO-driven alerts." 
+Service growth without cost discipline becomes an outage risk.
+
+Cost levers:
+
+- right-size CPU/memory requests and limits
+- autoscale by latency/queue depth, not CPU alone
+- reduce cross-service chatty calls (aggregate or cache)
+- enforce data-retention tiers for logs and traces
+- use queue buffering to smooth spikes instead of overprovisioning
+
+FinOps checks per service:
+
+- cost per request/job
+- top expensive dependencies
+- idle resource percentage
+- logging volume and high-cardinality metric waste
+
+Tie cost changes to release metadata so regressions are traceable.
 
 ---
 
-## 15. Flutter/Dart mapping table
+## 8) Production checklists
 
-| Microservices/DevOps concept | Flutter/Dart analogy |
-|-----------------------------|----------------------|
-| API gateway / BFF | Screen-specific repository/adapter for one app surface |
-| Bounded context | Feature module boundary (`auth`, `checkout`, `profile`) |
-| Stateless service instance | Rebuildable widget instance with state externalized |
-| Queue + worker | Background isolate processing tasks |
-| Pub/sub event | `Stream` updates consumed by multiple listeners |
-| Saga compensation | Undo/rollback flow across multiple async steps |
-| Idempotency key | Prevent duplicate button tap side effect |
-| Circuit breaker | Short-circuit failed dependency to protect UX |
-| Health readiness | App readiness gate before enabling interactions |
-| Canary deployment | Gradual rollout in app store feature flag cohorts |
+### Service readiness checklist
 
-Use this mapping in interviews when you need to explain backend architecture from a mobile-first perspective.
+- health endpoints (`/livez`, `/readyz`) implemented
+- structured logs with correlation IDs
+- metrics for latency/traffic/errors/saturation
+- distributed tracing enabled for critical paths
+- SLOs and alert policies documented
+- runbooks for incident, rollback, and dependency outage
+- secrets loaded only from secure secret store
+- idempotency strategy for external side effects
+
+### Delivery readiness checklist
+
+- CI checks required and green
+- vulnerability scans pass policy
+- staged rollout configured with auto-abort
+- rollback command tested recently
+- migration reviewed for backward compatibility
+- ownership and on-call escalation path confirmed
+
+---
+
+## 9) Anti-patterns to avoid
+
+- splitting into many services without ownership model
+- sharing one database schema across "independent" services
+- synchronous service call chains in hot request paths
+- no idempotency keys for payment/webhook-style side effects
+- shipping canary without SLO guardrails
+- treating rollback as manual improvisation
+
+---
+
+## 10) Flutter/Dart mental mapping
+
+| Backend ops concept | Flutter/Dart analogy |
+|---|---|
+| bounded context service | feature module ownership |
+| gateway/BFF shaping responses | repository adapting data for screen flows |
+| staged canary release | gradual feature rollout cohorts |
+| idempotency key for side effects | duplicate-tap protection semantics |
+
+Useful for communication across teams, but production architecture should always be justified by backend reliability and operational constraints.
+
+---
+
+**Previous:** [14-workflow-orchestration.md](./14-workflow-orchestration.md) - Workflow Orchestration in TypeScript  
+**Next:** [08-exercises.md](./08-exercises.md) - Production Exercises

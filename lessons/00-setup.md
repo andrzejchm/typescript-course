@@ -1,29 +1,22 @@
-# 00 — Environment Setup
+# 00 - Setup for Production TypeScript
 
-Get your TypeScript dev environment running. ~15 minutes.
+Get to a repeatable local workflow before writing features. This is the baseline used by healthy TS teams.
 
-## 1. Install Node.js
+## Why this matters in production
 
-**Option A — nvm (recommended):**
+- Most outages come from weak feedback loops, not weak syntax knowledge.
+- Strict compiler settings catch bugs before runtime.
+- A predictable run/test/check loop makes refactors safer and faster.
 
-```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-nvm install 20
-nvm use 20
-```
+## Core concepts with code
 
-**Option B — Direct download:**
-
-Go to [nodejs.org](https://nodejs.org/) and grab the LTS version (20+).
-
-**Verify it works:**
+### 1) Install and verify toolchain
 
 ```bash
-node -v   # should print v20.x.x or higher
-npm -v    # should print 10.x.x or higher
+# Use current LTS (20+ is fine for this course)
+node -v
+npm -v
 ```
-
-## 2. Project Setup
 
 ```bash
 git clone <this-repo>
@@ -31,86 +24,85 @@ cd typescript-course
 npm install
 ```
 
-## 3. VS Code Extensions
+### 2) Use a strict compiler baseline
 
-Install these for a smooth experience:
+`tsconfig.json` should stay strict:
 
-| Extension | Why |
-|-----------|-----|
-| **ESLint** | Linting (like `dart analyze`) |
-| **Prettier** | Auto-formatting (like `dart format`) |
-| **Pretty TypeScript Errors** | Makes TS errors human-readable |
-| **Error Lens** | Shows errors inline, right next to your code |
+```jsonc
+{
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "target": "ES2022",
+    "module": "ESNext"
+  }
+}
+```
 
-## 4. Running Code
+Why this is useful:
+- `strict`: catches nullability and unsafe assumptions.
+- `noUncheckedIndexedAccess`: forces you to handle missing array/object entries.
 
-Three ways to run TypeScript in this project:
+### 3) Run loop you will use every day
 
 ```bash
-# Watch mode — auto-reruns on save (your playground)
+# Fast iteration
 npm run dev
 
-# Run once
+# One-off run
 npm run run
 
-# Run a specific exercise file
-npx tsx exercises/01-types.ts
+# Tests
+npm test
+
+# Test watch mode
+npm run test:watch
 ```
 
-## 5. Key Concepts — What Are These Files?
+### 4) Optional single-command quality gate
 
-### `tsx` — The Runner
-
-Like `dart run` but for TypeScript. It runs `.ts` files directly without a separate compile step. Under the hood it transpiles on the fly.
-
-```bash
-# Dart equivalent
-dart run lib/main.dart
-
-# TypeScript equivalent
-npx tsx src/playground.ts
-```
-
-### `tsconfig.json` — Compiler Settings
-
-Like `analysis_options.yaml` in Dart. Controls how strict the type checker is, what JS version to target, and where to find source files.
-
-```jsonc
-// Key settings in this project:
-{
-  "strict": true,              // enable all strict checks (like Dart's sound null safety)
-  "noUncheckedIndexedAccess": true  // array/map access returns T | undefined
-}
-```
-
-### `package.json` — Dependencies & Scripts
-
-Like `pubspec.yaml`. Defines your project name, dependencies, and runnable scripts.
+Many teams add a single check script (similar to `dart analyze` + `dart test`):
 
 ```jsonc
 {
-  "scripts": {       // like custom commands in Makefile
-    "dev": "tsx watch src/playground.ts",
-    "test": "vitest run"
-  },
-  "dependencies": {},     // like pubspec dependencies
-  "devDependencies": {}   // like pubspec dev_dependencies
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm test"
+  }
 }
 ```
 
-## 6. Flutter ↔ TypeScript Tooling Cheat Sheet
+Run `npm run verify` before every commit.
 
-| Flutter / Dart | TypeScript / Node | Purpose |
-|----------------|-------------------|---------|
-| `dart run` | `npx tsx file.ts` | Run a file |
-| `dart pub get` | `npm install` | Install dependencies |
-| `pubspec.yaml` | `package.json` | Project config & deps |
-| `analysis_options.yaml` | `tsconfig.json` | Linter / compiler settings |
-| `dart test` | `npm test` (vitest) | Run tests |
-| `dart pub add pkg` | `npm install pkg` | Add a dependency |
+### 5) Flutter/Dart mapping (tooling)
 
-## Next Up
+| Dart / Flutter | TypeScript / Node |
+|---|---|
+| `dart run` | `npm run run` or `npx tsx file.ts` |
+| `dart test` | `npm test` |
+| `dart analyze` | `tsc --noEmit` (+ optional ESLint) |
+| `pubspec.yaml` | `package.json` |
+| `analysis_options.yaml` | `tsconfig.json` |
 
-You're ready. Open `src/playground.ts`, type some code, and run `npm run dev` to see it execute.
+## Best practices
 
-Head to [01-dart-to-ts.md](./01-dart-to-ts.md) to start learning the syntax.
+- Keep `strict` enabled; do not lower type safety to make errors go away.
+- Prefer small scripts that everyone can run (`dev`, `test`, `typecheck`, `verify`).
+- Run tests locally before pushing.
+- Treat editor diagnostics as first-class signals, not noise.
+
+## Common anti-patterns / pitfalls
+
+- Turning off strict flags to "move faster".
+- Depending only on manual app runs with no tests.
+- Skipping local checks and relying only on CI.
+- Using `any` to silence compiler errors in setup code.
+
+## Short practice tasks
+
+1. Run `npm run dev` and confirm edits in `src/playground.ts` execute immediately.
+2. Run `npm test` and inspect at least one test failure message.
+3. Add a temporary out-of-bounds array read in `src/playground.ts` and observe `noUncheckedIndexedAccess` behavior.
+4. Create a personal pre-commit habit: `npm run verify` (or equivalent) before every commit.
+
+Next: [01-dart-to-ts.md](./01-dart-to-ts.md)

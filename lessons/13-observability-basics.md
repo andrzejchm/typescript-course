@@ -1,387 +1,272 @@
-# 13 — Observability Basics (Logs, Metrics, Traces)
+# 13 - Observability Basics for Production Services
 
-In a Flutter app, local debugging usually means breakpoints, `debugPrint`, and hot reload. In production full-stack systems, you do not have that luxury. This lesson shows how to set up practical observability in TypeScript so you can answer: "What failed, where, and why?"
+Observability is how your team answers, in minutes, these production questions:
 
----
+- What is failing right now?
+- Which users or tenants are affected?
+- Which dependency is slow?
+- What changed before the incident?
 
-## 1. What is observability?
-
-Observability is your ability to understand system behavior from the outside using telemetry:
-
-- **Logs**: discrete events ("user clicked", "API failed")
-- **Metrics**: numeric trends over time (latency, error rate)
-- **Traces**: request journey across services (API -> DB -> external API -> LLM)
-
-Why production debugging is different from local:
-
-- users have real traffic patterns and bad network conditions
-- requests overlap, retry, and fail in non-deterministic ways
-- external systems (DB, APIs, LLMs) can be slow or flaky
-
-Observability is basically "production visibility."
+For backend teams, this is not optional tooling. It is part of service design.
 
 ---
 
-## 2. The 3 pillars
+## 1) Practical telemetry model: logs, metrics, traces
 
-### Logs
+Use all three together. Each solves a different part of incident response.
 
-Event-level records with context.
+| Signal | Best for | Typical query |
+|---|---|---|
+| Logs | Detailed events, payload context, exceptions | "show all errors for request `req_abc`" |
+| Metrics | Fast health and trend detection | "is p95 latency above target for 10m?" |
+| Traces | Cross-service latency and dependency bottlenecks | "which hop is consuming 80% of request time?" |
 
-Example:
+If you only ship logs, detection is late. If you only ship metrics, root cause is slow. If you only ship traces, coverage is often incomplete.
+
+---
+
+## 2) Baseline telemetry contract (every service)
+
+Define this once and enforce it in middleware and libraries.
+
+Required fields:
+
+- `timestamp`
+- `service`
+- `environment`
+- `version` (git SHA or build id)
+- `requestId` (correlation id)
+- `traceId` and `spanId` (if tracing enabled)
+- `tenantId` or `accountId` when available
+- `eventName`
+- `durationMs` for timed operations
+
+Structured JSON log example:
 
 ```json
 {
-  "level": "info",
-  "message": "workflow step started",
-  "workflowId": "wf_123",
-  "stepName": "llm_summarize",
-  "requestId": "req_abc"
+  "timestamp": "2026-02-25T12:14:30.124Z",
+  "level": "error",
+  "service": "billing-api",
+  "environment": "prod-eu",
+  "version": "a8f0c4e",
+  "requestId": "req_7ec9",
+  "traceId": "ec4e2b8a11d642f3",
+  "eventName": "payment.capture.failed",
+  "orderId": "ord_910",
+  "provider": "stripe",
+  "durationMs": 1320,
+  "errorCode": "timeout"
 }
 ```
 
-### Metrics
-
-Aggregated numbers over time.
-
-Examples:
-
-- `http_requests_total{route="/api/workflows"}`
-- `http_request_duration_ms` p50/p95/p99
-- `workflow_failed_total`
-
-### Traces
-
-Timeline of one request broken into spans.
-
-Example trace:
-
-- span 1: `POST /api/run-workflow`
-- span 2: `SELECT workflow config`
-- span 3: `Call external API`
-- span 4: `Call OpenAI`
-
 ---
 
-## 3. Logging setup in Node/TS
+## 3) Correlation IDs and context propagation
 
-`console.log` is fine for quick local checks, but weak at scale:
+Correlation IDs make logs searchable per request. Trace context links service hops.
 
-- inconsistent format
-- hard to filter/search
-- no built-in log level strategy
-
-Use `pino` for structured logs.
-
-Install:
-
-```bash
-npm install pino
-npm install -D pino-pretty
-```
-
-`src/logger.ts`:
-
-```typescript
-import pino from "pino";
-
-const isDev = process.env.NODE_ENV !== "production";
-
-export const logger = pino({
-  level: process.env.LOG_LEVEL ?? "info",
-  transport: isDev
-    ? {
-        target: "pino-pretty",
-        options: {
-          colorize: true,
-          translateTime: "SYS:standard",
-          ignore: "pid,hostname",
-        },
-      }
-    : undefined,
-});
-```
-
-Log levels you should use intentionally:
-
-- `debug`: noisy internal detail (development)
-- `info`: expected business events
-- `warn`: suspicious but recoverable
-- `error`: failed operation requiring attention
-
----
-
-## 4. Request logging and correlation IDs
-
-A correlation ID (often `requestId`) lets you tie all logs from one request together.
-
-`src/middleware/request-context.ts`:
+### Express request context middleware
 
 ```typescript
 import { randomUUID } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import { logger } from "../logger";
 
-export function requestContext(req: Request, res: Response, next: NextFunction) {
+declare global {
+  namespace Express {
+    interface Request {
+      requestId?: string;
+    }
+  }
+}
+
+export function requestContext(req: Request, res: Response, next: NextFunction): void {
   const requestId = req.header("x-request-id") ?? randomUUID();
 
   req.requestId = requestId;
   res.setHeader("x-request-id", requestId);
 
-  const start = Date.now();
-  logger.info({ requestId, method: req.method, path: req.path }, "request started");
-
-  res.on("finish", () => {
-    logger.info(
-      {
-        requestId,
-        method: req.method,
-        path: req.path,
-        statusCode: res.statusCode,
-        durationMs: Date.now() - start,
-      },
-      "request completed"
-    );
-  });
-
   next();
 }
 ```
 
-Minimal Express usage:
+### Forward context on outbound HTTP
 
 ```typescript
-app.use(requestContext);
+type Context = {
+  requestId: string;
+  traceparent?: string;
+};
 
-app.get("/api/tasks", async (req, res) => {
-  logger.info({ requestId: req.requestId }, "fetching tasks");
-  res.json({ items: [] });
-});
+export async function callCatalogService(ctx: Context, sku: string): Promise<Response> {
+  return fetch(`https://catalog.internal/items/${sku}`, {
+    headers: {
+      "x-request-id": ctx.requestId,
+      ...(ctx.traceparent ? { traceparent: ctx.traceparent } : {}),
+    },
+  });
+}
 ```
 
-Flutter analogy: similar to adding a request ID in a `dio` interceptor and including it in all API logs.
+Flutter analogy: this is the backend equivalent of attaching headers in a `dio` interceptor so all requests carry the same request context.
 
 ---
 
-## 5. Error tracking
+## 4) SLIs and SLOs that drive operations
 
-Use Sentry so errors are grouped, searchable, and linked to stack traces.
+Define SLIs from user-visible behavior first.
 
-Backend (Express):
+Core SLIs:
 
-```typescript
-import * as Sentry from "@sentry/node";
+- Availability: successful requests / total requests
+- Latency: p95 and p99 of critical endpoints
+- Freshness/lag for async pipelines (queue age, processing delay)
+- Correctness signals (for example, failed reconciliation ratio)
 
-Sentry.init({
-  dsn: process.env.SENTRY_DSN,
-  environment: process.env.NODE_ENV,
-});
+Example SLOs:
 
-app.get("/api/run", async (req, res) => {
-  try {
-    await runWorkflow();
-    res.json({ ok: true });
-  } catch (error) {
-    Sentry.captureException(error, {
-      tags: { route: "/api/run" },
-      extra: { requestId: req.requestId },
-    });
-    throw error;
-  }
-});
-```
+- API availability >= `99.9%` over 30 days
+- Checkout p95 latency <= `400ms` over 30 days
+- Async invoice workflow completion <= `5m` for `99%` of jobs
 
-Frontend (React/Vite style):
+Error budget:
 
-```typescript
-import * as Sentry from "@sentry/browser";
-
-Sentry.init({
-  dsn: import.meta.env.VITE_SENTRY_DSN,
-  environment: import.meta.env.MODE,
-});
-```
-
-Flutter analogy: Crashlytics for Flutter is conceptually very similar to Sentry for web/backend.
+- SLO `99.9%` allows ~43.2 minutes of monthly unavailability
+- Consume budget too fast -> freeze risky releases and prioritize reliability work
 
 ---
 
-## 6. Metrics basics
+## 5) Metrics and dashboards
 
-For interviews, measure what shows system health quickly:
+Expose metrics with labels that are stable and low-cardinality.
 
-- request count
-- latency: p50/p95/p99
-- error rate
-- queue depth
-- DB query duration
-- token usage and cost for LLM calls
+Good labels:
 
-`prom-client` + `/metrics` endpoint (Prometheus format):
+- `service`
+- `route` (templated, not raw URL)
+- `status_code`
+- `dependency`
+
+Avoid high-cardinality labels (user IDs, request IDs) in metrics.
+
+### Minimal dashboard layout
+
+1. Traffic: requests/sec by route
+2. Errors: 4xx/5xx rate and dependency errors
+3. Latency: p50/p95/p99 for top endpoints
+4. Saturation: CPU, memory, DB pool usage, queue depth
+5. Workflow panels: success rate, retry rate, DLQ count, age of oldest job
+
+### `prom-client` histogram snippet
 
 ```typescript
 import client from "prom-client";
 
-const register = new client.Registry();
-client.collectDefaultMetrics({ register });
+const registry = new client.Registry();
+client.collectDefaultMetrics({ register: registry });
 
-const httpRequestDuration = new client.Histogram({
+export const httpDurationMs = new client.Histogram({
   name: "http_request_duration_ms",
-  help: "HTTP request duration in ms",
-  labelNames: ["method", "route", "status_code"],
-  buckets: [10, 50, 100, 250, 500, 1000, 2000],
-  registers: [register],
-});
-
-app.use((req, res, next) => {
-  const end = httpRequestDuration.startTimer({ method: req.method, route: req.path });
-  res.on("finish", () => end({ status_code: String(res.statusCode) }));
-  next();
-});
-
-app.get("/metrics", async (_req, res) => {
-  res.set("Content-Type", register.contentType);
-  res.end(await register.metrics());
+  help: "HTTP request latency in milliseconds",
+  labelNames: ["service", "route", "method", "status_code"],
+  buckets: [10, 25, 50, 100, 200, 400, 800, 1600],
+  registers: [registry],
 });
 ```
 
 ---
 
-## 7. Distributed tracing basics
+## 6) Alerting that is actionable
 
-Plain English:
+Alert on symptoms and sustained impact, not on every spike.
 
-- **Trace** = one full request story
-- **Span** = one step in that story
+Priority alerts:
 
-OpenTelemetry helps when one request touches multiple systems (API, DB, third-party APIs, LLM). It shows where time is spent and where failures happen.
+- High error-rate burn for critical API
+- Latency SLO burn for checkout/payment paths
+- Queue age over threshold (workers cannot keep up)
+- DLQ growth with no recovery
+- Dependency outage (payment provider, DB, auth)
 
-Minimal span example around external API + LLM:
+Alert message should include:
 
-```typescript
-import { trace } from "@opentelemetry/api";
+- service + environment
+- current value vs threshold
+- links to dashboard, traces, runbook
+- owning on-call team
 
-const tracer = trace.getTracer("workflow-service");
+Example policy:
 
-async function runEnrichment(prompt: string) {
-  return tracer.startActiveSpan("run-enrichment", async (span) => {
-    try {
-      const externalResult = await tracer.startActiveSpan("external-api-call", async (child) => {
-        try {
-          const response = await fetch("https://api.example.com/data");
-          return await response.json();
-        } finally {
-          child.end();
-        }
-      });
-
-      const llmResult = await tracer.startActiveSpan("llm-call", async (child) => {
-        try {
-          return await callOpenAI({ prompt, context: externalResult });
-        } finally {
-          child.end();
-        }
-      });
-
-      return llmResult;
-    } catch (error) {
-      span.recordException(error as Error);
-      throw error;
-    } finally {
-      span.end();
-    }
-  });
-}
-```
+- `critical`: error rate > `2%` for `10m` on checkout endpoint
+- `warning`: error rate > `1%` for `30m`
 
 ---
 
-## 8. Observability for workflow orchestration
+## 7) Incident debugging workflow (repeatable)
 
-Interview-relevant for task pipelines and retries.
+Use a fixed flow so incidents are handled consistently.
 
-Track these fields at minimum:
+1. **Confirm impact**: affected routes, regions, tenants, error budget burn
+2. **Triage quickly**: dashboard -> identify whether issue is latency, errors, or saturation
+3. **Pivot by correlation ID**: inspect failed requests in logs
+4. **Use traces**: find the slow/failing span (DB, internal service, third-party)
+5. **Check recent change events**: deploys, config flags, migrations, dependency incidents
+6. **Mitigate first**: rollback, disable feature flag, reduce traffic, scale workers
+7. **Stabilize and verify**: alerts clear, SLI back within target
+8. **Post-incident**: write timeline, root cause, and preventive actions
 
-- `workflow_id`
-- `step_name`
-- `step_status` (`started`, `completed`, `failed`)
-- `duration_ms`
-- `retry_count`
-
-Log each step start/end/failure so you can replay incidents quickly.
-
-Example event shape:
-
-```json
-{
-  "timestamp": "2026-02-22T10:15:31.120Z",
-  "level": "info",
-  "workflow_id": "wf_89f",
-  "step_name": "fetch_customer_profile",
-  "step_status": "completed",
-  "duration_ms": 241,
-  "retry_count": 1,
-  "request_id": "req_7fd"
-}
-```
+Keep this runbook in the repo so on-call engineers do not improvise under pressure.
 
 ---
 
-## 9. Dashboards and alerts (production mindset)
+## 8) Workflow observability (long-running jobs)
 
-Dashboards tell you what is happening now. Alerts tell you when to wake up.
+For orchestrated jobs, emit standardized step events.
 
-Good starter alerts:
+Required step fields:
 
-- high error rate (for example > 2% for 5 minutes)
-- high p95 latency (for example > 1.5s)
-- repeated workflow failures for same step
-- spikes in LLM timeouts
+- `workflowId`
+- `stepName`
+- `attempt`
+- `status` (`started`, `completed`, `failed`, `compensated`)
+- `durationMs`
+- `idempotencyKey`
 
-Common tools:
+Use these to build views for:
 
-- Grafana (often with Prometheus)
-- Datadog
-- New Relic
-
-In interviews, mention threshold + duration, not just "set an alert."
-
----
-
-## 10. Day 1 setup checklist (small full-stack app)
-
-1. Add structured logger (`pino`) and standard log fields (service, env, version).
-2. Add request middleware with `requestId` and request duration logging.
-3. Define log-level policy (`debug/info/warn/error`) and default `LOG_LEVEL`.
-4. Add global error handler and send exceptions to Sentry.
-5. Add frontend Sentry initialization for runtime UI errors.
-6. Expose `/metrics` with `prom-client` and default Node metrics.
-7. Track business metrics (workflow success/failure, LLM tokens/cost, retries).
-8. Add trace instrumentation for external API and LLM calls.
-9. Build one dashboard (errors, p95 latency, throughput, workflow failures).
-10. Configure 3-4 actionable alerts with clear thresholds and on-call routing.
+- median/p95 step duration
+- retries by step
+- failure concentration by dependency
+- age of in-progress workflows
 
 ---
 
-## 11. Flutter comparison table
+## 9) Production readiness checklist
 
-| Flutter/mobile concept | TypeScript/backend equivalent |
-|------------------------|-------------------------------|
-| `debugPrint` | structured JSON logs (`pino`) |
-| Crashlytics | Sentry (frontend + backend SDKs) |
-| `dio` interceptors | Express middleware (request logging, auth, tracing context) |
-| Performance overlay / DevTools timeline | latency metrics + distributed traces |
-| `StreamBuilder` updates | log + metric stream in dashboards |
-| Firebase Analytics events | business metrics counters and events |
-| Isolate debugging and profiling | worker/service span analysis in traces |
-| Flutter release monitoring | production dashboards + alert policies |
+- Structured logs enabled for all services and workers
+- Correlation IDs accepted and propagated across internal calls
+- Traces exported with service + version metadata
+- Metrics endpoint exposed and scraped
+- Critical SLIs and SLOs documented per service
+- Dashboard links included in runbooks
+- Alert thresholds tuned to avoid noisy paging
+- Error tracking integrated with stack traces and release tags
+- Incident response workflow tested in game day drills
 
 ---
 
-## 12. Interview talk track (90-minute realistic script)
+## 10) Flutter/Dart mental mapping
 
-"For a small app, I would keep observability lightweight but complete from day one. I start with structured logs and a request ID middleware so every API call is traceable. Then I add Sentry on frontend and backend for exception tracking with context like `workflowId` and `requestId`.
+| Flutter/Dart concept | Backend operations equivalent |
+|---|---|
+| `dio` interceptors | request/trace header propagation middleware |
+| Crashlytics signal triage | centralized backend error tracking + trace linkage |
+| DevTools performance timeline | distributed tracing waterfall across services |
+| app release monitoring | service SLO dashboards and alert policies |
 
-Next, I add `prom-client` metrics and a `/metrics` endpoint, focusing on request volume, p95 latency, error rate, workflow failures, and LLM token/cost metrics. For slower chains (API -> DB -> external API -> LLM), I add OpenTelemetry spans around external calls so bottlenecks are obvious.
+Use the analogy to onboard mobile-heavy teams, but keep production decisions based on backend traffic and failure modes.
 
-Finally, I set basic alerts for high error rate, p95 spikes, repeated workflow failures, and LLM timeout spikes. That gives enough visibility to debug production issues quickly without overengineering during a 90-minute interview implementation." 
+---
+
+**Previous:** [12-backend-concepts.md](./12-backend-concepts.md) - Backend Concepts  
+**Next:** [14-workflow-orchestration.md](./14-workflow-orchestration.md) - Workflow Orchestration in TypeScript

@@ -1,607 +1,104 @@
-# Lesson 01: Dart → TypeScript Mental Model Map
+# 01 - Dart to TypeScript Mental Model (Production Edition)
 
-> You already know Dart. This lesson maps every Dart concept to its TypeScript equivalent so you can hit the ground running.
+You already know Dart. This lesson focuses on where TypeScript behaves differently in ways that affect real systems.
 
----
+## Why this matters in production
 
-## 1. Syntax Side-by-Side
+- Most TS bugs are mental-model bugs: nullability, shape compatibility, and runtime vs compile-time assumptions.
+- A good Dart -> TS translation layer helps you write predictable code instead of "it compiles, ship it" code.
 
-### Variable Declarations
+## Core concepts with code
 
-| Dart | TypeScript |
-|------|-----------|
-| `var` (mutable, inferred) | `let` (mutable, inferred) |
-| `final` (immutable, runtime) | `const` (immutable, runtime) |
-| `const` (immutable, compile-time) | *No equivalent* — `const` is the closest, but it's runtime only |
-
-```dart
-// Dart
-var name = 'Alice';        // mutable
-final age = 30;            // immutable (runtime)
-const pi = 3.14;           // immutable (compile-time)
-```
-
-```typescript
-// TypeScript
-let name = 'Alice';        // mutable
-const age = 30;            // immutable (runtime — like Dart's final)
-const pi = 3.14;           // same — there's no compile-time const in TS
-```
-
-> **Key insight:** TS `const` = Dart `final`. There is no Dart `const` equivalent in TS. Forget about compile-time constants.
-
----
-
-### Type Annotations
-
-Types come **after** the variable name in TS, separated by `:`.
-
-```dart
-// Dart — type BEFORE name
-String name = 'Alice';
-int age = 30;
-List<String> tags = ['a', 'b'];
-```
-
-```typescript
-// TypeScript — type AFTER name
-const name: string = 'Alice';
-const age: number = 30;
-const tags: string[] = ['a', 'b'];
-```
-
-> Note: primitive types are **lowercase** in TS: `string`, `number`, `boolean` (not `String`, `Number`, `Boolean`).
-
----
-
-### Null Safety
-
-Dart has `null`. TypeScript has **both** `null` and `undefined`.
-
-```dart
-// Dart
-String? name;           // can be String or null
-name ?? 'default';      // null-coalescing
-```
-
-```typescript
-// TypeScript
-let name: string | null = null;           // explicitly null
-let name2: string | undefined = undefined; // explicitly undefined
-let name3: string | null | undefined;      // either
-
-name ?? 'default';      // null-coalescing (works the same!)
-```
-
-> **`undefined`** = "never assigned" or "missing property". **`null`** = "explicitly set to nothing".
-> In practice, `undefined` is far more common in TS. Optional properties (`?`) default to `undefined`, not `null`.
+### 1) Nullability: `undefined` is everywhere
 
 ```typescript
 interface User {
+  id: string;
+  displayName?: string; // string | undefined
+}
+
+function greeting(user: User): string {
+  return `Hi ${user.displayName ?? "anonymous"}`;
+}
+```
+
+- Dart habit: think `null`.
+- TS reality: optional properties are usually `undefined`, not `null`.
+
+### 2) Structural typing (shape over declaration)
+
+```typescript
+interface Job {
+  id: string;
+  run(): Promise<void>;
+}
+
+class EmailJob {
+  constructor(public id: string) {}
+  async run(): Promise<void> {
+    console.log("sending email");
+  }
+}
+
+const job: Job = new EmailJob("job-1"); // OK: same shape
+```
+
+In Dart, explicit `implements` matters. In TS, compatible shape is enough.
+
+### 3) Named params -> object params
+
+```typescript
+type CreateUserInput = {
   name: string;
-  bio?: string;  // type is string | undefined (NOT string | null)
+  email: string;
+  marketingOptIn?: boolean;
+};
+
+function createUser({ name, email, marketingOptIn = false }: CreateUserInput) {
+  return { id: crypto.randomUUID(), name, email, marketingOptIn };
 }
 ```
 
----
-
-### String Interpolation
-
-```dart
-// Dart — single quotes, $ prefix
-var greeting = 'Hello $name, age ${age + 1}';
-```
+### 4) Runtime values vs erased types
 
 ```typescript
-// TypeScript — BACKTICKS required, ${} always
-const greeting = `Hello ${name}, age ${age + 1}`;
-```
+type UserId = string;
 
-> **Gotcha:** Regular quotes (`'` or `"`) do NOT support interpolation in TS. You **must** use backticks (`` ` ``).
-
----
-
-### Collections
-
-```dart
-// Dart
-List<int> numbers = [1, 2, 3];
-Map<String, int> scores = {'alice': 100, 'bob': 90};
-Set<String> tags = {'a', 'b', 'c'};
-```
-
-```typescript
-// TypeScript
-const numbers: number[] = [1, 2, 3];
-// or: const numbers: Array<number> = [1, 2, 3];
-
-const scores: Record<string, number> = { alice: 100, bob: 90 };
-// or: const scores: Map<string, number> = new Map([['alice', 100], ['bob', 90]]);
-
-const tags: Set<string> = new Set(['a', 'b', 'c']);
-```
-
-| Dart | TypeScript | Notes |
-|------|-----------|-------|
-| `List<T>` | `T[]` or `Array<T>` | `T[]` is more common |
-| `Map<K, V>` | `Record<K, V>` | For plain objects (most common) |
-| `Map<K, V>` | `Map<K, V>` | For actual Map instances (less common) |
-| `Set<T>` | `Set<T>` | Same! |
-
-> **Prefer `Record<K, V>`** for simple key-value data. Use `Map<K, V>` only when you need non-string keys or ordered iteration.
-
----
-
-### Functions
-
-```dart
-// Dart
-int add(int a, int b) => a + b;
-
-// or
-int add(int a, int b) {
-  return a + b;
+function toUserId(value: string): UserId {
+  return value;
 }
 ```
 
-```typescript
-// TypeScript — arrow function (most common)
-const add = (a: number, b: number): number => a + b;
+`UserId` improves readability, but it is not a runtime wrapper. It is just `string` at runtime.
 
-// or — function declaration
-function add(a: number, b: number): number {
-  return a + b;
-}
-```
-
-> Return type goes **after** the parameter list with `:`. TS can usually infer it, but explicit is better in interviews.
-
----
-
-### Named Parameters → Object Destructuring
-
-This is the **#1 syntax difference** you'll encounter.
-
-```dart
-// Dart — named parameters
-void greet({required String name, int age = 0}) {
-  print('Hello $name, age $age');
-}
-
-greet(name: 'Alice', age: 30);
-```
+### 5) Equality and coercion
 
 ```typescript
-// TypeScript — destructured object parameter
-function greet({ name, age = 0 }: { name: string; age?: number }): void {
-  console.log(`Hello ${name}, age ${age}`);
-}
-
-greet({ name: 'Alice', age: 30 });
+console.log(0 == "0");  // true (coercion)
+console.log(0 === "0"); // false (safe)
 ```
 
-For cleaner code, extract the parameter type:
+Always use `===` / `!==`.
 
-```typescript
-interface GreetParams {
-  name: string;
-  age?: number;  // optional (like Dart's non-required named param)
-}
+## Best practices
 
-function greet({ name, age = 0 }: GreetParams): void {
-  console.log(`Hello ${name}, age ${age}`);
-}
-```
+- Default to `const`; use `let` only when reassignment is needed.
+- Model absent data with optional fields and `??` defaults.
+- Treat `unknown` as the boundary type for external inputs.
+- Prefer object params for functions with 3+ arguments.
 
-> **No `required` keyword** — all params are required by default. Add `?` to make optional.
+## Common anti-patterns / pitfalls
 
----
+- Assuming `null` and `undefined` are interchangeable.
+- Expecting nominal typing like Dart (`implements` is not required for compatibility).
+- Using type assertions (`as`) as runtime validation.
+- Keeping Dart-style positional mega-constructors in TS APIs.
 
-### Classes
+## Short practice tasks
 
-```dart
-// Dart
-class User {
-  final String name;
-  int _age;  // private by convention
+1. Convert a Dart-style function with named args to a TS object-parameter function.
+2. Write a type-safe `displayName` function that returns a fallback for `undefined` and `null`.
+3. Create two unrelated classes with the same method shape and assign one to an interface typed for the other.
+4. Replace `==` with `===` across one file and verify behavior stays correct.
 
-  User(this.name, this._age);
-
-  String greet() => 'Hi, I\'m $name';
-
-  int get age => _age;
-}
-```
-
-```typescript
-// TypeScript
-class User {
-  readonly name: string;   // like Dart's final
-  private age: number;     // actually private (enforced by compiler)
-
-  constructor(name: string, age: number) {
-    this.name = name;
-    this.age = age;
-  }
-
-  greet(): string {
-    return `Hi, I'm ${this.name}`;
-  }
-
-  getAge(): number {
-    return this.age;
-  }
-}
-```
-
-**Shorthand constructor** (like Dart's `this.` syntax):
-
-```typescript
-class User {
-  constructor(
-    public readonly name: string,  // declares + assigns in one line
-    private age: number,
-  ) {}
-
-  greet(): string {
-    return `Hi, I'm ${this.name}`;
-  }
-}
-```
-
-| Dart | TypeScript |
-|------|-----------|
-| `final` field | `readonly` |
-| `_private` (convention) | `private` (keyword, enforced) |
-| `this.name` in constructor | `public name` in constructor params |
-| getters/setters with `get`/`set` | Same: `get`/`set` keywords |
-
----
-
-### Async / Await
-
-```dart
-// Dart
-Future<String> fetchName() async {
-  final response = await http.get(uri);
-  return response.body;
-}
-```
-
-```typescript
-// TypeScript
-async function fetchName(): Promise<string> {
-  const response = await fetch(url);
-  return response.text();
-}
-```
-
-| Dart | TypeScript |
-|------|-----------|
-| `Future<T>` | `Promise<T>` |
-| `async` / `await` | `async` / `await` (identical!) |
-| `Future.wait([])` | `Promise.all([])` |
-| `Stream<T>` | `AsyncIterable<T>` or libraries like RxJS |
-
----
-
-### Null-Aware Operators
-
-```dart
-// Dart
-name ?? 'default';     // null-coalescing
-user?.name;            // null-conditional access
-name ??= 'fallback';  // null-aware assignment
-```
-
-```typescript
-// TypeScript
-name ?? 'default';     // same!
-user?.name;            // same!
-// name ??= 'fallback'; // DOES exist in TS (ES2021+), actually works!
-```
-
-> `??` and `?.` work identically. `??=` also works in modern TS (ES2021+).
-
----
-
-### Type Casting
-
-```dart
-// Dart
-final name = value as String;
-if (value is String) { ... }
-```
-
-```typescript
-// TypeScript
-const name = value as string;     // note: lowercase 'string'
-if (typeof value === 'string') { ... }  // type guard (primitives)
-if (value instanceof MyClass) { ... }   // type guard (classes)
-```
-
-> **`typeof`** for primitives (`string`, `number`, `boolean`). **`instanceof`** for class instances.
-
----
-
-### Enums
-
-```dart
-// Dart
-enum Color { red, green, blue }
-
-// Enhanced enum
-enum Color {
-  red('Red'),
-  green('Green'),
-  blue('Blue');
-
-  final String label;
-  const Color(this.label);
-}
-```
-
-```typescript
-// TypeScript — enum (works but controversial)
-enum Color {
-  Red = 'red',
-  Green = 'green',
-  Blue = 'blue',
-}
-
-// PREFERRED — const object (more idiomatic TS)
-const Color = {
-  Red: 'red',
-  Green: 'green',
-  Blue: 'blue',
-} as const;
-
-type Color = typeof Color[keyof typeof Color];
-// type Color = 'red' | 'green' | 'blue'
-```
-
-> **Prefer `as const` objects** over `enum`. TS enums generate extra runtime code and have quirky behavior. The `as const` pattern is what most modern TS codebases use.
-
----
-
-## 2. Key Differences That Will Trip You Up
-
-### No `late` keyword
-
-```dart
-// Dart
-late String name;  // initialized later, runtime check
-```
-
-```typescript
-// TypeScript — options:
-
-// Option 1: Non-null assertion (use sparingly!)
-let name!: string;  // tells compiler "trust me, I'll assign it"
-
-// Option 2: Union with undefined (safer)
-let name: string | undefined;
-if (!name) throw new Error('name not set');
-
-// Option 3: Initialize properly (best)
-const name: string = computeName();
-```
-
----
-
-### No named parameters — use object destructuring
-
-```dart
-// Dart — this won't work in TS
-void createUser({required String name, required int age}) { ... }
-createUser(name: 'Alice', age: 30);
-```
-
-```typescript
-// TypeScript — destructure an object
-function createUser({ name, age }: { name: string; age: number }): void { ... }
-createUser({ name: 'Alice', age: 30 });
-```
-
-> This is the **#1 gotcha**. Burn this pattern into memory.
-
----
-
-### `===` not `==`
-
-```dart
-// Dart
-if (a == b) { ... }  // works fine
-```
-
-```typescript
-// TypeScript
-if (a === b) { ... }  // ALWAYS use triple equals
-if (a == b) { ... }   // BAD — does type coercion ('' == 0 is true!)
-```
-
-> **Rule:** Always use `===` and `!==`. Forget `==` exists.
-
----
-
-### `undefined` vs `null`
-
-```typescript
-let a;                // undefined — never assigned
-let b: string | null = null;  // null — explicitly set
-
-// Both are falsy:
-if (!a) { ... }  // true
-if (!b) { ... }  // true
-
-// Check specifically:
-if (a === undefined) { ... }
-if (b === null) { ... }
-```
-
-> **Convention:** Most TS code uses `undefined` (optional params, missing properties). Use `null` only when an API requires it.
-
----
-
-### All params required by default
-
-```dart
-// Dart — named params are optional unless `required`
-void greet({String? name}) { ... }
-```
-
-```typescript
-// TypeScript — all params required unless marked with ?
-function greet(name: string): void { ... }     // required
-function greet(name?: string): void { ... }    // optional (string | undefined)
-```
-
----
-
-### Structural typing (not nominal)
-
-This is a **fundamental** difference from Dart.
-
-```typescript
-interface Dog {
-  name: string;
-  bark(): void;
-}
-
-class Wolf {
-  constructor(public name: string) {}
-  bark(): void { console.log('Howl!'); }
-}
-
-// Wolf is NOT declared to implement Dog, but this works!
-const pet: Dog = new Wolf('Grey');  // OK — same shape = compatible
-```
-
-> TS doesn't care about class names or `implements` declarations. If the shape matches, it's compatible. Dart is **nominal** (must explicitly implement/extend).
-
----
-
-### `number` — one type to rule them all
-
-```dart
-// Dart
-int count = 42;
-double price = 9.99;
-```
-
-```typescript
-// TypeScript — just number
-const count: number = 42;
-const price: number = 9.99;
-```
-
-> No `int` vs `double` distinction. Everything is a floating-point `number` (or `bigint` for very large integers).
-
----
-
-### `console.log()` not `print()`
-
-```dart
-// Dart
-print('Hello');
-```
-
-```typescript
-// TypeScript
-console.log('Hello');
-console.error('Something went wrong');
-console.warn('Watch out');
-```
-
----
-
-### No `extension` methods
-
-```dart
-// Dart
-extension StringX on String {
-  String capitalize() => '${this[0].toUpperCase()}${substring(1)}';
-}
-'hello'.capitalize(); // 'Hello'
-```
-
-```typescript
-// TypeScript — use standalone functions
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
-}
-capitalize('hello'); // 'Hello'
-
-// DON'T modify prototypes (String.prototype.capitalize = ...)
-```
-
----
-
-### Semicolons — optional but use them
-
-```typescript
-const name = 'Alice'   // works
-const name = 'Alice';  // preferred — most codebases enforce this
-```
-
----
-
-### `interface` vs `abstract class`
-
-```typescript
-// Interface — compile-time only, zero runtime cost
-interface Animal {
-  name: string;
-  speak(): void;
-}
-
-// Abstract class — exists at runtime, can have implementation
-abstract class Animal {
-  abstract name: string;
-  abstract speak(): void;
-
-  describe(): string {  // concrete method
-    return `I am ${this.name}`;
-  }
-}
-```
-
-> **Prefer `interface`** unless you need shared implementation. Interfaces are erased at compile time — they generate no JavaScript code.
-
----
-
-## 3. Quick Reference Card
-
-| Dart | TypeScript | Notes |
-|------|-----------|-------|
-| `var x = 1` | `let x = 1` | Mutable |
-| `final x = 1` | `const x = 1` | Immutable |
-| `const x = 1` | `const x = 1` | No compile-time const in TS |
-| `String` | `string` | Lowercase! |
-| `int` / `double` | `number` | Single numeric type |
-| `bool` | `boolean` | |
-| `List<T>` | `T[]` | |
-| `Map<K, V>` | `Record<K, V>` | For plain objects |
-| `dynamic` | `any` | Avoid both |
-| `Object` | `unknown` | Safer than `any` |
-| `void` | `void` | Same |
-| `String?` | `string \| null` | TS also has `undefined` |
-| `late String` | `let s!: string` | Non-null assertion |
-| `required` | *(default)* | All params required by default |
-| `'$name'` | `` `${name}` `` | Backticks required |
-| `Future<T>` | `Promise<T>` | |
-| `async` / `await` | `async` / `await` | Identical |
-| `print()` | `console.log()` | |
-| `as String` | `as string` | Lowercase type |
-| `is String` | `typeof x === 'string'` | |
-| `??` / `?.` | `??` / `?.` | Identical |
-| `==` | `===` | Always triple equals |
-| `extension` | standalone function | No extension methods |
-| `enum` | `as const` object | Preferred over `enum` |
-| `abstract class` | `interface` | Prefer interface |
-| `implements` | `implements` | But structural typing means it's optional |
-| `{required String name}` | `{ name }: { name: string }` | Object destructuring |
-
----
-
-**Next:** [Lesson 02 →](./02-ts-type-system.md) — The TypeScript type system (unions, generics, utility types)
+Next: [02-types.md](./02-types.md)

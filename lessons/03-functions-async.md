@@ -1,351 +1,117 @@
-# 03 — Functions, Closures & Async
+# 03 - Functions and Async in Production
 
-Everything you need to know about functions and async patterns in TypeScript. Code-heavy, Dart comparisons where they help.
+This lesson focuses on async correctness, bounded concurrency, cancellation, and event-loop safety.
 
-## 1. Three Ways to Declare Functions
+## Why this matters in production
 
-```typescript
-// Function declaration (hoisted — can call before definition)
-function add(a: number, b: number): number {
-  return a + b;
-}
+- Async mistakes cause latency spikes, duplicate work, and stuck requests.
+- Good function signatures reduce misuse and make refactors safer.
+- Event-loop blocking can take down throughput even when code is "correct".
 
-// Arrow function (most common in modern TS)
-const add = (a: number, b: number): number => a + b;
+## Core concepts with code
 
-// Function expression
-const add = function (a: number, b: number): number {
-  return a + b;
-};
-```
-
-**Which to use?** Arrow functions are the default choice in modern TypeScript. Use `function` declarations when you need hoisting (calling before definition) or for top-level named functions in a module.
-
-> **Dart comparison:** Arrow functions are like Dart's `=>`, but in TS they can also have block bodies with `{}`. In Dart, `=>` is single-expression only.
-
-## 2. Arrow Function Gotchas
-
-These trip people up in interviews:
+### 1) Function signatures as contracts
 
 ```typescript
-// Single expression — implicit return
-const double = (x: number) => x * 2;
-
-// Block body — explicit return required!
-const double = (x: number) => {
-  return x * 2;
+type CreateInvoiceInput = {
+  customerId: string;
+  amountCents: number;
+  dueDateIso: string;
 };
 
-// ⚠️ Forgetting return in a block body silently returns undefined
-const double = (x: number) => {
-  x * 2; // BUG: returns undefined, not the result
-};
-
-// Returning an object literal — wrap in parens!
-const makeUser = (name: string) => ({ name }); // ✅
-const makeUser = (name: string) => { name };   // ❌ this is a block body, not an object
-```
-
-**`this` binding:** Arrow functions capture `this` from the enclosing scope, just like Dart. No surprises here — but it matters when working with class methods passed as callbacks.
-
-## 3. Optional & Default Parameters
-
-```typescript
-// Default parameter
-function greet(name: string, greeting: string = "Hello"): string {
-  return `${greeting}, ${name}!`;
-}
-
-greet("Alice");           // "Hello, Alice!"
-greet("Alice", "Hey");    // "Hey, Alice!"
-
-// Optional parameter — type becomes T | undefined
-function createUser(name: string, age?: number) {
-  // age is number | undefined here
-  if (age !== undefined) {
-    console.log(`${name} is ${age}`);
-  }
-}
-
-createUser("Alice");      // age is undefined
-createUser("Alice", 30);  // age is 30
-```
-
-> **Dart comparison:** Dart uses `[]` for positional optional and `{}` for named optional. In TS, all params are positional by default. Use `?` to mark optional. Optional params must come after required ones.
-
-## 4. "Named Parameters" via Destructuring
-
-This is the **#1 pattern Flutter devs need to learn**. TypeScript doesn't have named parameters — you fake them with object destructuring:
-
-```typescript
-// Dart:  void createUser({required String name, int? age})
-// TS equivalent:
-function createUser({ name, age }: { name: string; age?: number }) {
-  console.log(name, age);
-}
-
-createUser({ name: "Alice", age: 30 });
-createUser({ name: "Bob" }); // age is undefined
-```
-
-For functions with many parameters, extract the type:
-
-```typescript
-interface CreateUserParams {
-  name: string;
-  age?: number;
-  email?: string;
-}
-
-function createUser({ name, age, email }: CreateUserParams) {
-  console.log(name, age, email);
-}
-
-// Callers get autocomplete and type checking on the object
-createUser({ name: "Alice", email: "alice@example.com" });
-```
-
-You can also set defaults inside the destructuring:
-
-```typescript
-function createUser({ name, age = 0, email = "" }: CreateUserParams) {
-  // age is number (not number | undefined) because of the default
+function createInvoice(input: CreateInvoiceInput): { id: string } {
+  return { id: `inv_${input.customerId}` };
 }
 ```
 
-## 5. Rest Parameters
+Object parameters scale better than long positional args.
 
-Collect remaining arguments into an array:
-
-```typescript
-function sum(...numbers: number[]): number {
-  return numbers.reduce((acc, n) => acc + n, 0);
-}
-
-sum(1, 2, 3);       // 6
-sum(10, 20);         // 30
-sum();               // 0
-```
-
-Rest params must be last:
+### 2) Sequential vs parallel work
 
 ```typescript
-function log(level: string, ...messages: string[]) {
-  console.log(`[${level}]`, ...messages);
-}
+async function loadDashboard(userId: string) {
+  const [profile, notifications] = await Promise.all([
+    fetchProfile(userId),
+    fetchNotifications(userId),
+  ]);
 
-log("INFO", "Server started", "on port 3000");
-```
-
-## 6. Function Types
-
-Define the shape of a function — like Dart's `typedef`:
-
-```typescript
-// Type alias for a function
-type Callback = (value: string) => void;
-type Predicate<T> = (item: T) => boolean;
-
-// Use in function signatures
-function filter<T>(items: T[], predicate: Predicate<T>): T[] {
-  return items.filter(predicate);
-}
-
-const adults = filter(
-  [{ name: "Alice", age: 30 }, { name: "Bob", age: 12 }],
-  (user) => user.age >= 18,
-);
-
-// Inline function type (no alias needed for one-off use)
-function onEvent(handler: (event: string, data: unknown) => void) {
-  handler("click", { x: 10, y: 20 });
+  return { profile, notifications };
 }
 ```
 
-| Dart | TypeScript | Purpose |
-|------|-----------|---------|
-| `typedef Predicate<T> = bool Function(T)` | `type Predicate<T> = (item: T) => boolean` | Function type alias |
-| `void Function(String)` | `(value: string) => void` | Inline function type |
+Use `Promise.all` only when tasks are independent.
 
-## 7. Closures
-
-Functions capture variables from their enclosing scope:
+### 3) Handle partial failure with `Promise.allSettled`
 
 ```typescript
-function createCounter() {
-  let count = 0;
-  return {
-    increment: () => ++count,
-    decrement: () => --count,
-    getCount: () => count,
-  };
-}
-
-const counter = createCounter();
-counter.increment(); // 1
-counter.increment(); // 2
-counter.getCount();  // 2
-```
-
-A practical example — creating a logger with a prefix:
-
-```typescript
-function createLogger(prefix: string) {
-  return (message: string) => {
-    console.log(`[${prefix}] ${message}`);
-  };
-}
-
-const dbLog = createLogger("DB");
-dbLog("Connected");    // [DB] Connected
-dbLog("Query ran");    // [DB] Query ran
-```
-
-> **Dart comparison:** Works exactly the same. Closures close over variables, not values.
-
-## 8. Promises & Async/Await
-
-Side-by-side with Dart:
-
-```typescript
-// Dart:  Future<String> fetchUser(String id) async { ... }
-// TS:
-async function fetchUser(id: string): Promise<string> {
-  const response = await fetch(`/api/users/${id}`);
-  const data = await response.json();
-  return data.name;
-}
-```
-
-| Dart | TypeScript | Purpose |
-|------|-----------|---------|
-| `Future<T>` | `Promise<T>` | Async result container |
-| `Future.wait([a, b])` | `Promise.all([a, b])` | Run in parallel |
-| — | `Promise.race([a, b])` | First to complete wins |
-| `.then((v) => ...)` | `.then((v) => ...)` | Callback style |
-| `.catchError((e) => ...)` | `.catch((e) => ...)` | Error callback |
-| `try/catch` | `try/catch` | Error handling (same!) |
-
-### Creating Promises manually
-
-Rarely needed, but good to understand:
-
-```typescript
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-await delay(1000); // wait 1 second
-```
-
-### Error handling
-
-`try/catch` works the same as Dart:
-
-```typescript
-async function fetchUser(id: string): Promise<User> {
-  try {
-    const response = await fetch(`/api/users/${id}`);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    return await response.json();
-  } catch (error) {
-    console.error("Failed to fetch user:", error);
-    throw error; // re-throw to let caller handle it
-  }
-}
-```
-
-> **Watch out:** In TypeScript, `catch` gives you `unknown`, not a typed error. You need to narrow it:
->
-> ```typescript
-> catch (error) {
->   if (error instanceof Error) {
->     console.error(error.message);
->   }
-> }
-> ```
-
-## 9. Common Async Patterns
-
-These come up constantly in interviews and real code:
-
-### Parallel execution — `Promise.all`
-
-```typescript
-// Both requests fire at the same time
-const [users, posts] = await Promise.all([
-  fetchUsers(),
-  fetchPosts(),
-]);
-// Both are done here
-```
-
-### Sequential loop
-
-```typescript
-const results: User[] = [];
-for (const id of ids) {
-  results.push(await fetchUser(id)); // one at a time
-}
-```
-
-### Parallel map
-
-```typescript
-// Fire all requests at once, wait for all to finish
-const results = await Promise.all(
-  ids.map((id) => fetchUser(id)),
-);
-```
-
-### `Promise.race` — first to finish wins
-
-```typescript
-// Timeout pattern: race the fetch against a timer
-const result = await Promise.race([
-  fetch("/api/data"),
-  delay(5000).then(() => {
-    throw new Error("Timeout");
-  }),
-]);
-```
-
-### `Promise.allSettled` — don't fail on one error
-
-```typescript
-// Unlike Promise.all, this doesn't short-circuit on failure
 const results = await Promise.allSettled([
-  fetchUser("1"),
-  fetchUser("2"),
-  fetchUser("bad-id"),
+  fetchProfile("u1"),
+  fetchRecommendations("u1"),
 ]);
 
 for (const result of results) {
-  if (result.status === "fulfilled") {
-    console.log(result.value);
-  } else {
-    console.error(result.reason);
+  if (result.status === "rejected") {
+    console.error("dependency failed", result.reason);
   }
 }
 ```
 
-## Quick Reference
+### 4) Cancellation basics with `AbortController`
 
-| Concept | Dart | TypeScript |
-|---------|------|-----------|
-| Arrow function | `(x) => x * 2` (single expr only) | `(x) => x * 2` or `(x) => { return x * 2; }` |
-| Named params | `void f({required String name})` | `function f({ name }: { name: string })` |
-| Optional param | `void f([int? x])` | `function f(x?: number)` |
-| Default param | `void f({int x = 0})` | `function f(x: number = 0)` |
-| Function type | `typedef Fn = void Function(int)` | `type Fn = (x: number) => void` |
-| Async function | `Future<T> f() async` | `async function f(): Promise<T>` |
-| Parallel async | `Future.wait([a, b])` | `Promise.all([a, b])` |
-| Closure | Same as TS | Same as Dart |
+```typescript
+async function fetchWithTimeout(url: string, timeoutMs: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-## Next Up
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+```
 
-Head to [04-classes-interfaces.md](./04-classes-interfaces.md) to learn about classes, interfaces, and OOP patterns.
+### 5) Avoid blocking the event loop
+
+```typescript
+function expensiveSyncWork(input: number[]): number {
+  // Simulated CPU-heavy operation
+  return input.reduce((acc, n) => acc + n * n, 0);
+}
+
+// Better: run heavy CPU tasks outside request path (worker/queue).
+```
+
+In Node.js, CPU-heavy sync code blocks all requests on that process.
+
+### 6) Dart mapping
+
+| Dart | TypeScript |
+|---|---|
+| `Future<T>` | `Promise<T>` |
+| `Future.wait` | `Promise.all` |
+| cancellation via `CancelableOperation` patterns | `AbortController` |
+
+## Best practices
+
+- Prefer `async/await` over mixed `.then()` chains.
+- Keep async functions small and explicit about return types.
+- Use timeouts/cancellation for network operations.
+- Bound fan-out when calling many downstream services.
+
+## Common anti-patterns / pitfalls
+
+- `await` inside loops when parallelism is safe and needed.
+- Fire-and-forget promises with no error handling.
+- Ignoring cancellation signals in long request paths.
+- Running expensive synchronous work in HTTP handlers.
+
+## Short practice tasks
+
+1. Refactor sequential API calls into `Promise.all` where safe.
+2. Add timeout + abort support to one `fetch` helper.
+3. Convert a `.then()` chain into `async/await` with explicit error propagation.
+4. Find one loop with `await` and justify whether it should stay sequential.
+
+Next: [04-arrays-objects.md](./04-arrays-objects.md)

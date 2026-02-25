@@ -1,99 +1,193 @@
-# Lesson 08: Practice Exercises
+# Lesson 08: Production Exercises
 
-> Interview-style coding problems to solidify your TypeScript skills. Work through these in order — they build on concepts from previous lessons.
+Build this sequence as one progressive backend project. Each phase adds production concerns, not just language features.
 
 ---
 
-## How to Run
+## How to Work Through This Lesson
 
-Each exercise is a standalone file. Run any exercise with:
+1. Start from a clean branch of your course project.
+2. Complete exercises in order.
+3. Keep each phase releasable (tests green, no TODO stubs on critical paths).
+4. Treat acceptance criteria as required behavior, not suggestions.
+
+Recommended commands (adapt to your project scripts):
 
 ```bash
-npx tsx exercises/01-array-transform.ts
-```
-
-Solutions are in `exercises/solutions/`. Try to solve each exercise before peeking!
-
-```bash
-npx tsx exercises/solutions/01-array-transform.solution.ts
+npm run typecheck
+npm run lint
+npm test
 ```
 
 ---
 
-## Exercise Overview
+## Quality Gates (Apply to Every Exercise)
 
-| # | Name | Difficulty | Tests | Time Target | Run Command |
-|---|------|-----------|-------|-------------|-------------|
-| 01 | Array Transformations | ⭐ Easy | Array methods (`filter`, `map`, `reduce`, `sort`) | 5 min | `npx tsx exercises/01-array-transform.ts` |
-| 02 | Type-Safe Event Emitter | ⭐⭐ Medium | Generics, callbacks, `Map` | 10 min | `npx tsx exercises/02-type-safe-event-emitter.ts` |
-| 03 | Async Task Queue | ⭐⭐ Medium | Promises, async/await, concurrency | 10 min | `npx tsx exercises/03-async-task-queue.ts` |
-| 04 | Discriminated Unions | ⭐⭐ Medium | Union types, type narrowing, generics | 10 min | `npx tsx exercises/04-discriminated-unions.ts` |
-| 05 | Todo REST API | ⭐⭐⭐ Hard | Express, Zod validation, error handling | 15 min | `npx tsx exercises/05-todo-api.ts` |
-| 06 | Utility Functions | ⭐ Easy | Core TS patterns, closures, generics | 10 min | `npx tsx exercises/06-utility-functions.ts` |
+- **Type safety**: strict TypeScript passes with no ignored errors.
+- **Boundary validation**: request payloads and env vars validated at runtime.
+- **Error consistency**: all failures use one response envelope and stable codes.
+- **Observability basics**: structured logs include request ID and route latency.
+- **Verification evidence**: include commands run and outcomes.
 
-**Total time: ~60 min** (give yourself some buffer — in an interview you'd pick 2-3 of these)
+Do not move to the next phase until all gates pass.
 
 ---
 
-## Tips for Interview Success
+## Exercise Progression
 
-1. **Talk through your approach** before writing code — interviewers care about your thought process
-2. **Start with types** — define your data shapes first, then implement
-3. **Handle edge cases** — empty arrays, missing keys, invalid input
-4. **Use built-in methods** — `map`, `filter`, `reduce`, `Object.entries` — don't reinvent the wheel
-5. **Keep it simple** — a working solution beats an over-engineered one every time
-
----
-
-## Dart → TypeScript Cheat Sheet for Exercises
-
-| Dart | TypeScript |
-|------|-----------|
-| `list.where((x) => ...)` | `array.filter((x) => ...)` |
-| `list.map((x) => ...)` | `array.map((x) => ...)` |
-| `list.fold(init, (acc, x) => ...)` | `array.reduce((acc, x) => ..., init)` |
-| `list.sort((a, b) => ...)` | `array.sort((a, b) => ...)` — **mutates in place!** |
-| `Map<String, List<User>>` | `Record<string, User[]>` |
-| `Future<T>` | `Promise<T>` |
-| `async/await` | `async/await` (same!) |
-| `Stream` | No built-in equivalent — use callbacks or async iterators |
+| Phase | Focus | Main Deliverable |
+|---|---|---|
+| 01 | Service foundation | Express app skeleton with versioned routing and health endpoints |
+| 02 | Validation and errors | Centralized validation and error middleware with stable contracts |
+| 03 | PostgreSQL integration | CRUD with parameterized SQL, migrations, and indexes |
+| 04 | Transactional workflows | Multi-step operation wrapped in transaction with rollback safety |
+| 05 | Resilience | Rate limiting, retry policy, timeout budgets, idempotency keys |
+| 06 | Async processing | Queue-backed background jobs with retry and dead-letter handling |
+| 07 | GraphQL layer | GraphQL API with DataLoader and schema governance rules |
+| 08 | Operational hardening | Graceful shutdown, readiness checks, dashboards/alerts checklist |
 
 ---
 
-## Exercise Details
+## Detailed Exercises
 
-### 01 — Array Transformations ⭐
+### 01 - Service Foundation
 
-**What you'll practice:** `filter`, `map`, `reduce`, `sort`, `Record` type, `Object.entries`
+Create a maintainable API skeleton:
 
-Given an array of users, implement 5 functions that transform the data. This is the most common type of interview warm-up question.
+- `src/app.ts` for middleware and routes
+- `src/server.ts` for startup/shutdown
+- `/api/v1` route namespace
+- `/health` and `/ready` endpoints
 
-### 02 — Type-Safe Event Emitter ⭐⭐
+Acceptance criteria:
 
-**What you'll practice:** Generics with constraints, `keyof`, mapped types, `Map` data structure
+- app starts and serves `GET /health` with `200`
+- route namespace is versioned (`/api/v1/...`)
+- app module can be imported in tests without opening a port
 
-Build an event emitter where TypeScript enforces that event names and payloads match. This tests your understanding of generics — a very common interview topic.
+How to verify:
 
-### 03 — Async Task Queue ⭐⭐
+- run service locally and call `GET /health`
+- run integration test that imports app and asserts `200`
 
-**What you'll practice:** Promises, async/await, concurrency control
+### 02 - Validation and Error Contract
 
-Implement a queue that limits how many async tasks run simultaneously. This tests your understanding of the event loop and Promise mechanics — critical for any Node.js role.
+Add runtime schemas for request and environment validation.
 
-### 04 — Discriminated Unions ⭐⭐
+Acceptance criteria:
 
-**What you'll practice:** Union types, type narrowing with `switch`, generic transformations
+- invalid body returns `422` with field-level details
+- unknown routes return a consistent not-found error shape
+- uncaught errors map to generic `500` response with request ID
 
-Build a type-safe API response handler (Loading | Success | Error). This pattern is everywhere in production TypeScript — similar to Dart's sealed classes.
+How to verify:
 
-### 05 — Todo REST API ⭐⭐⭐
+- send malformed JSON payload and assert error envelope
+- hit nonexistent endpoint and assert not-found contract
 
-**What you'll practice:** Express routing, Zod validation, error handling, HTTP status codes
+### 03 - PostgreSQL Integration
 
-Build a complete CRUD API. This is the "build something real" exercise — the kind of thing you'd do in a live coding interview for a backend role.
+Introduce PostgreSQL-backed persistence for a core resource (for example, tasks or orders).
 
-### 06 — Utility Functions ⭐
+Acceptance criteria:
 
-**What you'll practice:** Closures, generics, recursion, async retry patterns
+- migrations create schema and constraints
+- all SQL is parameterized (`$1`, `$2`, ...)
+- list and detail queries are indexed for expected access pattern
 
-Implement 5 common utility functions (`debounce`, `deepClone`, `groupBy`, `retry`, `memoize`). These are classic interview questions that test core JavaScript/TypeScript fundamentals.
+How to verify:
+
+- run migrations on clean database
+- execute CRUD tests against real Postgres
+- capture one `EXPLAIN ANALYZE` for a list endpoint query
+
+### 04 - Transactional Workflow
+
+Implement a two-step write flow that must be atomic (for example, create order + reserve inventory).
+
+Acceptance criteria:
+
+- both writes commit on success
+- any failure triggers rollback
+- conflict path returns explicit `409` or domain-specific error code
+
+How to verify:
+
+- write test that injects failure in step two and confirms no partial data
+
+### 05 - Resilience Controls
+
+Protect the API from retries, bursts, and flaky dependencies.
+
+Acceptance criteria:
+
+- route-level rate limit returns `429` with retry hint
+- outbound dependency calls use timeout + exponential backoff with jitter
+- create endpoint supports `Idempotency-Key` and deduplicates writes
+
+How to verify:
+
+- run repeated request script and observe rate-limit behavior
+- force timeout from dependency mock and verify retry policy
+- send duplicate idempotent requests and confirm one logical write
+
+### 06 - Async Jobs and Queueing
+
+Move a slow side effect to background processing.
+
+Acceptance criteria:
+
+- API returns quickly with accepted/queued status
+- worker processes job with retry policy
+- poison jobs are isolated (dead-letter or failure state)
+
+How to verify:
+
+- enqueue a job and confirm eventual completion state
+- simulate worker failure and confirm retry then dead-letter behavior
+
+### 07 - GraphQL with Production Guardrails
+
+Add a GraphQL endpoint for read-heavy use cases.
+
+Acceptance criteria:
+
+- schema supports pagination and explicit nullability
+- related-field resolution avoids N+1 via DataLoader
+- deprecated fields are marked with deprecation reason
+
+How to verify:
+
+- run one query that would cause N+1 and show batched execution in logs
+- run schema diff check after adding/deprecating fields
+
+### 08 - Operational Hardening
+
+Finish with service runtime safety and observability checks.
+
+Acceptance criteria:
+
+- graceful shutdown drains in-flight requests and closes DB pool
+- readiness endpoint fails when dependencies are unavailable
+- service emits structured logs and core metrics
+
+How to verify:
+
+- send `SIGTERM` during active requests and confirm graceful completion
+- disable DB dependency and confirm readiness returns non-`200`
+
+---
+
+## Delivery Checklist for Each Phase
+
+- tests added/updated and passing
+- typecheck and lint passing
+- migration or schema changes documented
+- rollback plan for breaking changes
+- short note on trade-offs made in that phase
+
+The goal is not just code that works locally; the goal is code that can run safely in production.
+
+---
+
+**Previous:** [15-microservices-devops.md](./15-microservices-devops.md) - Microservices and DevOps for TypeScript Production Systems

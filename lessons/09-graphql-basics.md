@@ -1,391 +1,230 @@
-# 09 — GraphQL Basics
+# 09 - GraphQL Basics
 
-GraphQL is a query language for APIs. With REST, you hit multiple endpoints (`/users`, `/posts`, `/users/123/posts`) and the server decides what data to return. With GraphQL, there's a single endpoint (`/graphql`) and the **client** asks for exactly the fields it needs — nothing more, nothing less. Think of it like writing a typed query that looks like the shape of the response you want. If you've used Dart's `json_serializable` to define model classes, GraphQL's type system will feel familiar — except it lives on the API layer and both client and server share it.
-
----
-
-## 1. Core Concepts
-
-| Concept | What It Is | Dart/REST Analogy |
-|---------|-----------|-------------------|
-| **Schema** | Defines all available data and operations | API contract (like OpenAPI/Swagger, but required) |
-| **Types** | Shape of your data | Dart classes / TS interfaces |
-| **Queries** | Read data | GET requests |
-| **Mutations** | Write/modify data | POST / PUT / DELETE requests |
-| **Resolvers** | Functions that fetch/compute the data | Route handlers in Express |
-| **Subscriptions** | Real-time updates via WebSocket | Dart `Stream`s — won't deep dive here |
+GraphQL is a contract-first API layer where clients request exactly the fields they need from a single endpoint. In production, GraphQL succeeds when the schema is governed carefully and resolver performance is managed deliberately.
 
 ---
 
-## 2. Schema Definition Language (SDL)
+## 1. Core Model
 
-The schema is the heart of GraphQL. It defines **what data exists** and **what operations are available**.
+GraphQL has five core building blocks:
+
+- **Schema**: the source of truth for API capabilities
+- **Types**: object, scalar, enum, interface, union, input
+- **Queries**: read operations
+- **Mutations**: write operations
+- **Resolvers**: runtime functions that fulfill fields
+
+The schema is your API contract. Treat it like a public interface with compatibility rules.
+
+---
+
+## 2. Schema First, Explicitly Typed
 
 ```graphql
-# Define types (like TypeScript interfaces or Dart classes)
+scalar DateTime
+
 type User {
-  id: ID!           # ! means non-null (like Dart's non-nullable types)
-  name: String!
+  id: ID!
   email: String!
-  age: Int          # nullable (like Dart's int?)
-  posts: [Post!]!   # non-null array of non-null Posts
+  name: String!
+  createdAt: DateTime!
+  posts(limit: Int = 20, after: String): PostConnection!
 }
 
 type Post {
   id: ID!
   title: String!
-  content: String!
+  body: String!
   author: User!
-  createdAt: String!
+  createdAt: DateTime!
 }
 
-# Define what you can query (read)
+type PostConnection {
+  edges: [PostEdge!]!
+  pageInfo: PageInfo!
+}
+
+type PostEdge {
+  cursor: String!
+  node: Post!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
 type Query {
-  users: [User!]!
-  user(id: ID!): User        # nullable — might not find the user
-  posts: [Post!]!
-  post(id: ID!): Post
+  user(id: ID!): User
+  users(limit: Int = 50): [User!]!
 }
 
-# Define what you can mutate (write)
+input CreatePostInput {
+  title: String!
+  body: String!
+}
+
 type Mutation {
-  createUser(name: String!, email: String!): User!
-  updateUser(id: ID!, name: String, email: String): User
-  deleteUser(id: ID!): Boolean!
-  createPost(title: String!, content: String!, authorId: ID!): Post!
+  createPost(input: CreatePostInput!): Post!
 }
 ```
 
-### SDL ↔ TypeScript ↔ Dart
+Production defaults:
 
-```
-// GraphQL SDL                  // TypeScript                    // Dart
-type User {                     interface User {                 class User {
-  id: ID!                         id: string;                      final String id;
-  name: String!                   name: string;                    final String name;
-  email: String!                  email: string;                   final String email;
-  age: Int                        age?: number;                    final int? age;
-  posts: [Post!]!                 posts: Post[];                   final List<Post> posts;
-}                               }                                }
-```
-
-> **Key:** `!` in GraphQL = non-nullable (the default in Dart). No `!` = nullable (like `?` in Dart/TS).
+- Make nullability decisions intentionally (`!` only when guaranteed)
+- Prefer explicit input objects over long argument lists
+- Prefer cursor-based pagination for high-scale collections
 
 ---
 
-## 3. Writing Queries (Client Side)
+## 3. Resolver Structure and Context
 
-Queries are how the client asks for data. You specify exactly which fields you want.
+Resolver signature: `(parent, args, context, info)`.
 
-```graphql
-# Simple query — get all users, but only their id, name, and email
-query {
-  users {
-    id
-    name
-    email
-  }
-}
-```
-
-Response:
-
-```json
-{
-  "data": {
-    "users": [
-      { "id": "1", "name": "Alice", "email": "alice@example.com" },
-      { "id": "2", "name": "Bob", "email": "bob@example.com" }
-    ]
-  }
-}
-```
-
-Notice: no `age`, no `posts` — you only get what you ask for. **No over-fetching.**
-
-### Query with Arguments
-
-```graphql
-query {
-  user(id: "1") {
-    name
-    email
-    posts {
-      title
-    }
-  }
-}
-```
-
-One request, nested data. **No under-fetching** — no need for separate `/users/1` then `/users/1/posts`.
-
-### Query with Variables (the proper way)
-
-```graphql
-query GetUser($id: ID!) {
-  user(id: $id) {
-    name
-    email
-    posts {
-      title
-      createdAt
-    }
-  }
-}
-```
-
-Variables (sent as JSON alongside the query):
-
-```json
-{ "id": "1" }
-```
-
-> **Why variables?** They keep queries reusable and prevent injection attacks. Always use them in real code.
-
----
-
-## 4. Writing Mutations
-
-Mutations modify data. Same syntax as queries, but they start with `mutation`.
-
-```graphql
-mutation CreateUser($name: String!, $email: String!) {
-  createUser(name: $name, email: $email) {
-    id
-    name
-    email
-  }
-}
-# Variables: { "name": "Alice", "email": "alice@example.com" }
-```
-
-The fields after `createUser { ... }` are what you want **returned** after the mutation. This is powerful — create a user and get back exactly the fields you need in one round trip.
-
-```graphql
-mutation UpdateUser($id: ID!, $name: String) {
-  updateUser(id: $id, name: $name) {
-    id
-    name
-  }
-}
-# Variables: { "id": "1", "name": "Alice Updated" }
-```
-
----
-
-## 5. Resolvers (Server Side)
-
-Resolvers are the functions that actually fetch or compute data. **This is what you'd write in an interview.**
-
-Every field in your schema can have a resolver. In practice, you only write resolvers for root queries/mutations and fields that need custom logic (like relationships).
+Use `context` for request-scoped dependencies (auth identity, DB handle, DataLoader instances).
 
 ```typescript
-// Types for our in-memory data
-interface User {
-  id: string;
-  name: string;
-  email: string;
-}
+type GraphqlContext = {
+  requestId: string;
+  userId: string | null;
+  db: DbClient;
+  loaders: {
+    userById: DataLoader<string, User | null>;
+  };
+};
 
-interface Post {
-  id: string;
-  title: string;
-  content: string;
-  authorId: string; // FK — not exposed directly in schema
-  createdAt: string;
-}
-
-// In-memory data
-const users: User[] = [
-  { id: "1", name: "Alice", email: "alice@example.com" },
-  { id: "2", name: "Bob", email: "bob@example.com" },
-];
-
-const posts: Post[] = [
-  { id: "1", title: "GraphQL 101", content: "...", authorId: "1", createdAt: "2024-01-01" },
-  { id: "2", title: "TypeScript Tips", content: "...", authorId: "1", createdAt: "2024-01-02" },
-];
-
-// Resolvers map schema fields to functions
 const resolvers = {
   Query: {
-    users: () => users,
-    user: (_: unknown, { id }: { id: string }) => users.find((u) => u.id === id),
-    posts: () => posts,
-    post: (_: unknown, { id }: { id: string }) => posts.find((p) => p.id === id),
-  },
-
-  Mutation: {
-    createUser: (_: unknown, { name, email }: { name: string; email: string }) => {
-      const user: User = { id: crypto.randomUUID(), name, email };
-      users.push(user);
-      return user;
+    user: async (_: unknown, args: { id: string }, ctx: GraphqlContext) => {
+      return ctx.loaders.userById.load(args.id);
     },
-    deleteUser: (_: unknown, { id }: { id: string }) => {
-      const index = users.findIndex((u) => u.id === id);
-      if (index === -1) return false;
-      users.splice(index, 1);
-      return true;
-    },
-  },
-
-  // Field resolvers — resolve nested relationships
-  User: {
-    posts: (parent: User) => posts.filter((p) => p.authorId === parent.id),
   },
   Post: {
-    author: (parent: Post) => users.find((u) => u.id === parent.authorId),
+    author: async (post: { authorId: string }, _: unknown, ctx: GraphqlContext) => {
+      return ctx.loaders.userById.load(post.authorId);
+    },
   },
 };
 ```
 
-### Resolver Signature: `(parent, args, context, info)`
-
-| Param | What It Is | Example |
-|-------|-----------|---------|
-| `parent` | The parent object (for nested resolvers) | In `User.posts`, `parent` is the `User` |
-| `args` | Arguments passed to the field | `{ id: "123" }` for `user(id: "123")` |
-| `context` | Shared across all resolvers per request | DB connection, auth info, DataLoader |
-| `info` | Query AST metadata | Rarely used — ignore for interviews |
-
-> **Dart comparison:** Resolvers are like repository methods. `Query.users` is like `UserRepository.getAll()`. `User.posts` is like a lazy-loaded relationship.
+Keep resolver logic thin. Put business rules in services/use-cases so they are testable outside GraphQL transport.
 
 ---
 
-## 6. Full Working Example
+## 4. N+1 and DataLoader
 
-A complete GraphQL server using `graphql-yoga` (simplest setup — no boilerplate):
+N+1 appears when each parent field triggers a separate query for related data.
+
+Example failure mode:
+
+- `users` returns 200 users
+- `User.posts` runs one SQL query per user
+- Total queries: `1 + 200`
+
+Use DataLoader to batch and cache during a request.
 
 ```typescript
-import { createServer } from "node:http";
-import { createSchema, createYoga } from "graphql-yoga";
+import DataLoader from "dataloader";
 
-// In-memory data
-interface User { id: string; name: string; email: string }
-interface Post { id: string; title: string; content: string; authorId: string }
-
-const users: User[] = [
-  { id: "1", name: "Alice", email: "alice@example.com" },
-];
-const posts: Post[] = [
-  { id: "1", title: "Hello GraphQL", content: "...", authorId: "1" },
-];
-
-const yoga = createYoga({
-  schema: createSchema({
-    typeDefs: /* GraphQL */ `
-      type User {
-        id: ID!
-        name: String!
-        email: String!
-        posts: [Post!]!
-      }
-      type Post {
-        id: ID!
-        title: String!
-        content: String!
-        author: User!
-      }
-      type Query {
-        users: [User!]!
-        user(id: ID!): User
-      }
-      type Mutation {
-        createUser(name: String!, email: String!): User!
-      }
-    `,
-    resolvers: {
-      Query: {
-        users: () => users,
-        user: (_: unknown, { id }: { id: string }) => users.find((u) => u.id === id),
-      },
-      Mutation: {
-        createUser: (_: unknown, { name, email }: { name: string; email: string }) => {
-          const user: User = { id: String(users.length + 1), name, email };
-          users.push(user);
-          return user;
-        },
-      },
-      User: {
-        posts: (parent: User) => posts.filter((p) => p.authorId === parent.id),
-      },
-      Post: {
-        author: (parent: Post) => users.find((u) => u.id === parent.authorId)!,
-      },
-    },
-  }),
-});
-
-const server = createServer(yoga);
-server.listen(4000, () => {
-  console.log("GraphQL server running on http://localhost:4000/graphql");
-});
+function createUserByIdLoader(db: DbClient) {
+  return new DataLoader<string, User | null>(async (userIds) => {
+    const rows = await db.queryUsersByIds([...userIds]);
+    const map = new Map(rows.map((user) => [user.id, user]));
+    return userIds.map((id) => map.get(id) ?? null);
+  });
+}
 ```
 
-Run it:
+DataLoader scope must be per request, not global. Global loaders leak data between users and break auth boundaries.
 
-```bash
-npm install graphql-yoga graphql
-npx tsx server.ts
-```
+---
 
-Open `http://localhost:4000/graphql` in your browser — you get **GraphiQL**, a built-in playground where you can write and test queries interactively. Try pasting:
+## 5. Error Model and Client Contracts
 
-```graphql
-query {
-  users {
-    name
-    posts {
-      title
+GraphQL responses may include both `data` and `errors`.
+
+Recommendations:
+
+- Map domain errors to stable codes (`extensions.code`)
+- Hide internal stack traces from clients
+- Log with request ID and resolver path
+- Return partial data only when it is acceptable for your client flow
+
+Example error shape:
+
+```json
+{
+  "errors": [
+    {
+      "message": "User not found",
+      "extensions": {
+        "code": "NOT_FOUND",
+        "requestId": "req_123"
+      }
     }
+  ],
+  "data": {
+    "user": null
   }
 }
 ```
 
 ---
 
-## 7. GraphQL vs REST Cheat Sheet
+## 6. Schema Governance and Evolution
 
-| Concept | REST | GraphQL |
-|---------|------|---------|
-| Endpoint | Multiple (`/users`, `/posts`) | Single (`/graphql`) |
-| Data fetching | Server decides what to return | Client decides what to return |
-| Over-fetching | Common | Impossible — you pick the fields |
-| Under-fetching | Common (need multiple requests) | Impossible — nest what you need |
-| Typing | Optional (OpenAPI/Swagger) | Built-in (schema is the contract) |
-| Real-time | WebSockets / SSE | Subscriptions |
-| Caching | HTTP caching (easy, built-in) | More complex (no URL-based caching) |
-| File upload | Native multipart | Needs extra setup |
-| Learning curve | Low | Medium |
+A GraphQL API usually evolves in one graph rather than versioned endpoints. Governance prevents breaking clients.
 
----
+Rules that keep schema evolution safe:
 
-## 8. Interview Tips
+- Additive changes are generally safe (new fields, new types)
+- Breaking changes require migration windows (not immediate removal)
+- Deprecate fields with `@deprecated(reason: "...")`
+- Track field usage before removal
+- Publish schema diffs in CI and block breaking merges
 
-- **Ask "REST or GraphQL?"** when told to build an API — shows you know both and think about trade-offs.
-- **Resolvers are just functions that return data.** Don't overthink them. If you can write an Express route handler, you can write a resolver.
-- **The schema IS the documentation.** Mention this as a key benefit — clients can introspect the schema to discover the API.
-- **N+1 problem:** If `users` returns 100 users and each triggers a `User.posts` resolver, that's 1 + 100 queries. Solution: **DataLoader** batches those into a single query. You don't need to implement it — just know the concept and mention it.
-- **GraphQL + TypeScript = great pair.** Both are about types. Tools like `graphql-codegen` auto-generate TS types from your schema, so your resolvers are fully type-safe.
-- **Error handling:** GraphQL always returns HTTP 200. Errors go in the response body under `"errors"`. This is different from REST where you use status codes.
+Example deprecation:
 
----
+```graphql
+type User {
+  id: ID!
+  fullName: String! @deprecated(reason: "Use name")
+  name: String!
+}
+```
 
-## 9. Dart/Flutter Comparison
-
-| GraphQL Concept | Dart/Flutter Equivalent |
-|----------------|------------------------|
-| Schema types | Model classes (`@JsonSerializable`) |
-| Resolvers | Repository methods |
-| Query variables | Method parameters |
-| `graphql-yoga` server | `shelf` + custom handler |
-| GraphiQL playground | Postman / Insomnia |
-| Apollo Client (React) | `graphql_flutter` package |
-| Schema-first typing | `build_runner` + code generation |
-
-GraphQL queries are like writing a "select" for your API — you describe the shape of data you want, and you get exactly that back.
+For large teams, establish a schema review process the same way you review database migrations.
 
 ---
 
-**Previous:** [07-express-basics.md](./07-express-basics.md) — Express Basics
-**Next:** [08-exercises.md](./08-exercises.md) — Practice Exercises
+## 7. Operational Controls for Production GraphQL
+
+GraphQL needs guardrails to avoid expensive or abusive queries:
+
+- Depth limit: prevent deeply nested payload bombs
+- Complexity/cost analysis: cap expensive operations
+- Timeouts and cancellation: fail fast on long-running resolvers
+- Persisted queries: only allow known query hashes in public clients
+- Rate limiting: apply per identity/API key
+- Introspection policy: disable or restrict in production if required by security posture
+
+These controls are often more important than schema syntax.
+
+---
+
+## 8. Where GraphQL Fits
+
+GraphQL works best when:
+
+- multiple clients need different slices of the same domain graph
+- frontend iteration speed is high and over-fetching hurts latency
+- you can invest in schema governance and resolver observability
+
+REST may be simpler when endpoints are coarse-grained, cache-friendly, and stable.
+
+Choose the transport that matches client needs and operational maturity.
+
+---
+
+**Previous:** [07-express-basics.md](./07-express-basics.md) - Express Basics  
+**Next:** [10-essential-libraries.md](./10-essential-libraries.md) - Essential Libraries

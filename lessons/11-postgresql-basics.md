@@ -1,402 +1,236 @@
-# 11 — PostgreSQL Basics
+# 11 - PostgreSQL Basics
 
-PostgreSQL is a relational database — your data lives in **tables** with rows and columns, like a spreadsheet but with strict types, relationships between tables, and a powerful query language (SQL). If Firestore is a document store (nested JSON blobs), Postgres is a structured table store. If you've used `drift` or `floor` in Flutter, you already touched SQLite — Postgres works the same way, just more powerful and designed for production servers.
-
----
-
-## 1. Setting Up Locally
-
-```bash
-# macOS (Homebrew)
-brew install postgresql@17
-brew services start postgresql@17
-
-# Create a database
-createdb myapp
-
-# Connect
-psql myapp
-
-# Or use a connection URL
-psql postgresql://localhost:5432/myapp
-```
-
-**Alternatives:**
-
-- **Postgres.app** (macOS) — just download and click Start. Zero config. [postgresapp.com](https://postgresapp.com)
-- **Docker** — if you prefer containers:
-
-```bash
-docker run --name pg -e POSTGRES_PASSWORD=postgres -p 5432:5432 -d postgres:17
-```
+PostgreSQL is the core persistence layer for many production systems. This lesson covers practical fundamentals: modeling data, writing safe queries, indexing correctly, running transactions, reading query plans, and evolving schema without downtime.
 
 ---
 
-## 2. SQL Basics — The 4 Operations (CRUD)
+## 1. Data Modeling Fundamentals
 
-### CREATE TABLE (like defining a Dart class)
+Start with explicit constraints. Constraints are correctness tools, not optional polish.
 
 ```sql
--- Dart equivalent:
--- class Task {
---   final String id;
---   final String title;
---   final String? description;
---   final String status;
---   final DateTime createdAt;
--- }
+CREATE TABLE users (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email         TEXT NOT NULL UNIQUE,
+  full_name     TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
-CREATE TABLE IF NOT EXISTS tasks (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  title       TEXT NOT NULL,
-  description TEXT,
-  status      TEXT NOT NULL DEFAULT 'pending',
-  result      TEXT,
-  created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMP NOT NULL DEFAULT NOW()
+CREATE TABLE orders (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id            UUID NOT NULL REFERENCES users(id),
+  external_ref       TEXT NOT NULL UNIQUE,
+  status             TEXT NOT NULL CHECK (status IN ('pending', 'paid', 'failed')),
+  amount_cents       INTEGER NOT NULL CHECK (amount_cents > 0),
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-### Quick Type Mapping
+Guidelines:
 
-| Dart Type | PostgreSQL Type | Notes |
-|-----------|----------------|-------|
-| `String` | `TEXT` | Variable-length string |
-| `int` | `INTEGER` or `BIGINT` | 32-bit or 64-bit |
-| `double` | `DOUBLE PRECISION` or `NUMERIC` | Float or exact decimal |
-| `bool` | `BOOLEAN` | `true`/`false` |
-| `DateTime` | `TIMESTAMP` | Date + time |
-| `String` (UUID) | `UUID` | Use `gen_random_uuid()` for auto-generate |
-| `List<String>` | `TEXT[]` | Postgres supports arrays! |
-| `Map<String, dynamic>` | `JSONB` | Stored as binary JSON, queryable |
+- use `TIMESTAMPTZ` for timestamps
+- encode invariants with `CHECK`, `NOT NULL`, `UNIQUE`
+- add foreign keys for relational integrity
+- model money as integer cents, not floating point
 
 ---
 
-### INSERT (create a row)
+## 2. Safe Querying from TypeScript
 
-```sql
--- Basic insert
-INSERT INTO tasks (title, description)
-VALUES ('Process data', 'Fetch and analyze');
-
--- Insert and get the created row back (VERY useful!)
-INSERT INTO tasks (title, description, status)
-VALUES ('Process data', 'Fetch and analyze', 'pending')
-RETURNING *;
-
--- Insert multiple rows
-INSERT INTO tasks (title) VALUES ('Task 1'), ('Task 2'), ('Task 3');
-```
-
-`RETURNING *` is a PostgreSQL superpower — you get the created row back including the generated `id` and `created_at`. No need for a second query!
-
----
-
-### SELECT (read rows)
-
-```sql
--- Get all
-SELECT * FROM tasks;
-
--- Get specific columns
-SELECT id, title, status FROM tasks;
-
--- Filter (WHERE)
-SELECT * FROM tasks WHERE status = 'pending';
-
--- Multiple conditions
-SELECT * FROM tasks WHERE status = 'pending' AND created_at > '2026-01-01';
-
--- Sort
-SELECT * FROM tasks ORDER BY created_at DESC;
-
--- Limit (pagination)
-SELECT * FROM tasks ORDER BY created_at DESC LIMIT 10 OFFSET 20;
-
--- Count
-SELECT COUNT(*) FROM tasks WHERE status = 'completed';
-
--- Get one by ID
-SELECT * FROM tasks WHERE id = '550e8400-e29b-41d4-a716-446655440000';
-```
-
----
-
-### UPDATE (modify rows)
-
-```sql
--- Update one
-UPDATE tasks SET status = 'completed', result = 'Done!' WHERE id = '...';
-
--- Update and return the updated row
-UPDATE tasks SET status = 'completed'
-WHERE id = '...'
-RETURNING *;
-
--- Update multiple
-UPDATE tasks SET status = 'cancelled'
-WHERE status = 'pending' AND created_at < '2026-01-01';
-```
-
-> **Warning:** Always use `WHERE`! Without it, you update ALL rows.
-
----
-
-### DELETE (remove rows)
-
-```sql
--- Delete one
-DELETE FROM tasks WHERE id = '...';
-
--- Delete and confirm what was deleted
-DELETE FROM tasks WHERE id = '...' RETURNING *;
-
--- Delete multiple
-DELETE FROM tasks WHERE status = 'cancelled';
-```
-
-> **Warning:** Same rule — always use `WHERE` with DELETE.
-
----
-
-## 3. Using `pg` in Node.js/TypeScript
-
-### Connection Pool (singleton pattern)
+Always parameterize queries; never interpolate user input.
 
 ```typescript
-// lib/db.ts
-import { Pool, QueryResultRow } from "pg";
+import { Pool } from "pg";
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  // or individual fields:
-  // host: 'localhost', port: 5432, database: 'myapp',
-  // user: 'postgres', password: 'postgres'
-});
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
-// Typed query helper
-export async function query<T extends QueryResultRow>(
-  text: string,
-  params?: any[]
-): Promise<T[]> {
-  const result = await pool.query<T>(text, params);
-  return result.rows;
-}
+type OrderRow = {
+  id: string;
+  user_id: string;
+  status: "pending" | "paid" | "failed";
+  amount_cents: number;
+};
 
-// For single row results
-export async function queryOne<T extends QueryResultRow>(
-  text: string,
-  params?: any[]
-): Promise<T | null> {
-  const result = await pool.query<T>(text, params);
+export async function findOrderById(id: string): Promise<OrderRow | null> {
+  const result = await pool.query<OrderRow>(
+    `SELECT id, user_id, status, amount_cents FROM orders WHERE id = $1`,
+    [id],
+  );
+
   return result.rows[0] ?? null;
 }
-
-export default pool;
 ```
 
----
-
-### CRUD Operations in TypeScript
-
-```typescript
-// Types
-interface Task {
-  id: string;
-  title: string;
-  description: string | null;
-  status: string;
-  result: string | null;
-  created_at: Date;
-  updated_at: Date;
-}
-
-// CREATE
-const newTask = await queryOne<Task>(
-  `INSERT INTO tasks (title, description) VALUES ($1, $2) RETURNING *`,
-  [title, description]
-);
-
-// READ (all, with filter)
-const pending = await query<Task>(
-  `SELECT * FROM tasks WHERE status = $1 ORDER BY created_at DESC`,
-  ["pending"]
-);
-
-// READ (one by ID)
-const task = await queryOne<Task>(
-  `SELECT * FROM tasks WHERE id = $1`,
-  [taskId]
-);
-
-// UPDATE
-const updated = await queryOne<Task>(
-  `UPDATE tasks SET status = $1, result = $2, updated_at = NOW()
-   WHERE id = $3 RETURNING *`,
-  ["completed", "Success!", taskId]
-);
-
-// DELETE
-const deleted = await queryOne<Task>(
-  `DELETE FROM tasks WHERE id = $1 RETURNING *`,
-  [taskId]
-);
-```
-
-**Key things to notice:**
-
-- `$1`, `$2`, `$3` — positional parameters (prevents SQL injection!)
-- Always use parameters, NEVER string interpolation: `` `WHERE id = '${id}'` `` — **NEVER DO THIS**
-- `RETURNING *` — always use it to get the result back
-- `result.rows` — `pg` returns `{ rows: T[], rowCount: number }`
-
----
-
-## 4. Relationships
-
-### One-to-many
+Use `RETURNING` on writes to avoid extra reads:
 
 ```sql
-CREATE TABLE workflows (
-  id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name  TEXT NOT NULL
-);
-
-CREATE TABLE tasks (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  workflow_id UUID REFERENCES workflows(id) ON DELETE CASCADE,
-  title       TEXT NOT NULL,
-  position    INTEGER NOT NULL DEFAULT 0
-);
-```
-
-`REFERENCES` = foreign key. `ON DELETE CASCADE` = delete tasks when their workflow is deleted.
-
-### Querying with JOIN
-
-```sql
--- Get a workflow with all its tasks
-SELECT w.*, t.id as task_id, t.title as task_title, t.status
-FROM workflows w
-LEFT JOIN tasks t ON t.workflow_id = w.id
-WHERE w.id = $1
-ORDER BY t.position;
-```
-
-Don't panic about JOINs — think of it as "fetch from two tables and connect matching rows."
-
----
-
-## 5. JSONB — PostgreSQL's Secret Weapon
-
-```sql
--- Store arbitrary JSON (like Firestore documents!)
-CREATE TABLE events (
-  id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  type     TEXT NOT NULL,
-  payload  JSONB NOT NULL DEFAULT '{}'
-);
-
--- Insert JSON
-INSERT INTO events (type, payload)
-VALUES ('user_action', '{"action": "click", "target": "button", "metadata": {"page": "home"}}');
-
--- Query inside JSON
-SELECT * FROM events WHERE payload->>'action' = 'click';
-SELECT * FROM events WHERE payload->'metadata'->>'page' = 'home';
-```
-
-`->>` extracts as text, `->` extracts as JSON. This is useful for storing flexible/dynamic data alongside structured tables — like having Firestore inside Postgres.
-
----
-
-## 6. Useful PostgreSQL Commands (psql)
-
-```
-\dt         — list all tables
-\d tasks    — describe table structure
-\l          — list databases
-\c mydb     — connect to database
-\q          — quit
-\x          — toggle expanded display (easier to read wide rows)
+INSERT INTO orders (user_id, external_ref, status, amount_cents)
+VALUES ($1, $2, 'pending', $3)
+RETURNING id, status, created_at;
 ```
 
 ---
 
-## 7. Common Patterns for the Interview
+## 3. Indexing Strategy
 
-### Initialize database (idempotent script)
+Indexes speed reads but add write overhead. Add them where query patterns justify cost.
 
 ```sql
--- db/init.sql
-CREATE TABLE IF NOT EXISTS tasks (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  title       TEXT NOT NULL,
-  description TEXT,
-  status      TEXT NOT NULL DEFAULT 'pending',
-  result      TEXT,
-  created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMP NOT NULL DEFAULT NOW()
-);
+-- filter and sort path
+CREATE INDEX idx_orders_user_created ON orders (user_id, created_at DESC);
 
--- Add columns later without breaking existing tables
--- ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority INTEGER DEFAULT 0;
+-- lookup path
+CREATE UNIQUE INDEX idx_orders_external_ref ON orders (external_ref);
+
+-- selective partial index
+CREATE INDEX idx_orders_pending ON orders (created_at)
+WHERE status = 'pending';
 ```
 
-Run with: `psql $DATABASE_URL -f db/init.sql`
+Index what you query frequently:
 
-### Transaction (all-or-nothing operations)
+- columns used in `WHERE`
+- columns used in `ORDER BY`
+- join keys and foreign keys
+- high-value partial subsets
+
+Avoid adding speculative indexes without observed need.
+
+---
+
+## 4. Transactions and Isolation
+
+Use transactions for multi-step state changes that must succeed together.
 
 ```typescript
 const client = await pool.connect();
 try {
   await client.query("BEGIN");
 
-  const workflow = await client.query(
-    `INSERT INTO workflows (name) VALUES ($1) RETURNING *`,
-    [name]
+  const debit = await client.query(
+    `UPDATE accounts
+     SET balance_cents = balance_cents - $1
+     WHERE id = $2 AND balance_cents >= $1
+     RETURNING id`,
+    [amountCents, sourceAccountId],
   );
 
+  if (debit.rowCount !== 1) {
+    throw new Error("Insufficient balance");
+  }
+
   await client.query(
-    `INSERT INTO tasks (workflow_id, title, position) VALUES ($1, $2, 0)`,
-    [workflow.rows[0].id, "First task"]
+    `UPDATE accounts SET balance_cents = balance_cents + $1 WHERE id = $2`,
+    [amountCents, destinationAccountId],
   );
 
   await client.query("COMMIT");
-} catch (e) {
+} catch (error) {
   await client.query("ROLLBACK");
-  throw e;
+  throw error;
 } finally {
   client.release();
 }
 ```
 
-Think of transactions like Firestore batched writes — either everything succeeds, or nothing does.
+Isolation choices are trade-offs:
+
+- `READ COMMITTED`: default, good baseline
+- `REPEATABLE READ`: stable reads inside transaction
+- `SERIALIZABLE`: strongest correctness, higher contention/retry cost
+
+Use the weakest isolation level that preserves correctness.
 
 ---
 
-## 8. Dart/Flutter ↔ PostgreSQL Comparison
+## 5. Query Plans and Performance Tuning
 
-| Flutter/Dart | PostgreSQL/pg |
-|---|---|
-| `drift` / `floor` (SQLite ORM) | `pg` (raw driver) |
-| `@DataClassName('Task')` | `CREATE TABLE tasks (...)` |
-| `select(tasks).get()` | `SELECT * FROM tasks` |
-| `into(tasks).insert(...)` | `INSERT INTO tasks (...) VALUES (...)` |
-| Firestore document | Table row |
-| Firestore collection | Table |
-| Firestore subcollection | Related table with foreign key |
-| `Map<String, dynamic>` field | `JSONB` column |
-| `drift` migrations | `db/init.sql` script |
+Do not guess why a query is slow. Inspect the execution plan.
+
+```sql
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT id, status, created_at
+FROM orders
+WHERE user_id = $1
+ORDER BY created_at DESC
+LIMIT 50;
+```
+
+What to watch:
+
+- `Seq Scan` on large tables when index scan is expected
+- high `Rows Removed by Filter`
+- sort nodes with large memory usage
+- high shared/local buffer reads
+
+Tune by rewriting query shape, adding/removing indexes, or reducing payload.
 
 ---
 
-## 9. Interview Tips
+## 6. Schema Evolution Without Downtime
 
-- **Use `RETURNING *` everywhere** — avoids a second SELECT after INSERT/UPDATE
-- **Use `$1, $2` params** — never concatenate SQL strings
-- **`CREATE TABLE IF NOT EXISTS`** — idempotent, safe to run repeatedly
-- **Keep queries in separate functions** (e.g., `lib/queries/tasks.ts`) — clean and testable
-- **Use `JSONB` for flexible data** — it's like having Firestore inside Postgres
-- **`UUID` primary keys** are better than auto-increment for distributed systems
-- **Keep the schema simple** — you can always add columns later with `ALTER TABLE`
+Use expand/contract migrations to avoid breaking running application versions.
+
+### Expand (safe additions)
+
+1. Add nullable column or table
+2. Backfill data asynchronously in batches
+3. Deploy app that writes both old and new fields
+
+### Contract (safe cleanup)
+
+4. Switch reads to new field only
+5. Enforce `NOT NULL` / constraints
+6. Drop old field in a later migration
+
+Example:
+
+```sql
+-- expand
+ALTER TABLE orders ADD COLUMN processed_at TIMESTAMPTZ;
+
+-- later, after backfill and dual writes
+ALTER TABLE orders ALTER COLUMN processed_at SET NOT NULL;
+```
+
+Never combine data backfill and schema lock-heavy operations into one risky migration.
+
+---
+
+## 7. Idempotency and Consistency Patterns
+
+Network retries happen. Make write operations safe.
+
+Database-backed pattern:
+
+- client sends `Idempotency-Key`
+- store key in a unique column/table
+- on duplicate key, return existing result instead of writing again
+
+```sql
+CREATE TABLE payment_requests (
+  idempotency_key TEXT PRIMARY KEY,
+  order_id UUID NOT NULL,
+  response_json JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+Combine with transactions so side effects and idempotency record commit atomically.
+
+---
+
+## 8. Operational Practices
+
+- use connection pooling; avoid creating a new DB connection per request
+- set statement timeouts to prevent runaway queries
+- capture slow query logs and review regularly
+- monitor lock waits and deadlocks
+- test migrations on production-like data before release
+
+PostgreSQL reliability comes from discipline in migrations, indexing, and transactional boundaries.
+
+---
+
+**Previous:** [10-essential-libraries.md](./10-essential-libraries.md) - Essential Libraries  
+**Next:** [12-backend-concepts.md](./12-backend-concepts.md) - Backend Concepts

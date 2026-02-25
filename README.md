@@ -1,6 +1,6 @@
-# TypeScript in 1 Day — For Flutter Developers
+# Production TypeScript Engineering — For Flutter Developers
 
-A crash course to get you interview-ready in TypeScript. Built for Dart developers who need to write TS fluently in a live coding interview.
+A practical TypeScript curriculum for Dart/Flutter developers who want to build production-ready backend and platform systems.
 
 ## Prerequisites
 
@@ -15,7 +15,37 @@ npm install
 npm run dev    # opens a watch-mode playground
 ```
 
-## Study Order (~9.5–10 hours)
+## What you will be able to build
+
+- API services with clear type boundaries and safe contracts
+- Resilient workflows with retries, cancellation, and recovery paths
+- Observable systems with logs, metrics, traces, and alerts
+- Deployable backend services with practical DevOps and reliability foundations
+
+## Production principles
+
+- **Type safety first**: model domain data explicitly and use the compiler as a design partner
+- **Explicit error handling**: treat failures as part of the contract, not edge cases
+- **Idempotency by default**: design handlers and jobs to be safe on retries
+- **Observability built in**: instrument behavior so issues are diagnosable in production
+- **Simplicity over abstraction**: choose clear, maintainable solutions before clever patterns
+
+## How to study
+
+Use this loop for each lesson:
+
+1. **Learn** the concept from the lesson notes.
+2. **Code** the examples in your own playground/project.
+3. **Test** success and failure paths with realistic inputs.
+4. **Operate** it: add logs/metrics, think through retries, and deployment behavior.
+
+## Study Order (~7h20m+)
+
+Follow the sequence below for production systems fluency:
+
+- **Foundation**: lessons 00-07
+- **System-building topics**: lessons 09-15
+- **Integration practice**: lesson 08 (after 15)
 
 | #  | Lesson                  | Time   | What You'll Learn                        |
 |----|-------------------------|--------|------------------------------------------|
@@ -34,12 +64,4 @@ npm run dev    # opens a watch-mode playground
 | 13 | [Observability Basics](lessons/13-observability-basics.md) | 25 min | Logs, metrics, traces, Sentry, OpenTelemetry, alerts |
 | 14 | [Workflow Orchestration](lessons/14-workflow-orchestration.md) | 30 min | Durable workflows, retries, cancellation/resume, resilience patterns |
 | 15 | [Microservices and DevOps](lessons/15-microservices-devops.md) | 30 min | Monolith vs microservices, resilience, CI/CD, platforms, SLOs, security |
-| 08 | [Exercises](lessons/08-exercises.md) | 60+ min | Practice problems, interview-style |
-
-## Interview Tips
-
-- **Talk while you code.** Explain your approach before writing. Interviewers care about your thought process as much as the solution.
-- **Start with types.** Define your data shapes first (`interface`, `type`). It shows you think before you code and catches bugs early.
-- **Use `const` by default.** Only reach for `let` when you need reassignment. Never use `var`. This signals you know modern JS/TS.
-- **Don't fight the type system.** If you're reaching for `any` or `as`, step back and think about the actual type. Interviewers notice.
-- **Know your array methods.** `map`, `filter`, `reduce`, `find`, `some`, `every` — these replace most loops and show fluency.
+| 08 | [Exercises](lessons/08-exercises.md) | 60+ min | End-to-end drills to combine typing, reliability, and operations thinking |

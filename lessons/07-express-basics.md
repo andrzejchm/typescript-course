@@ -1,283 +1,246 @@
-# 07 — Express Basics
+# 07 - Express Basics
 
-Express is the most popular Node.js web framework. It's minimal and middleware-based — think of it as a simple HTTP server with a plugin system. Unlike Dart's `shelf` or Flutter's server-side options, Express is the de facto standard for Node.js APIs. Almost every TS backend interview will use it.
+Express is a thin HTTP framework. In production, that is a strength: you keep control over architecture, middleware, and operational behavior.
 
-## 1. Hello World
+This lesson moves from a basic app to a maintainable API service with clear boundaries, consistent errors, validation, and safe shutdown.
+
+---
+
+## 1. Production-Ready Service Shape
+
+Use a small module layout early so the app can grow without rewrites.
+
+```text
+src/
+  app.ts                 # express app wiring (no network listen)
+  server.ts              # process startup and shutdown
+  config/env.ts          # environment parsing/validation
+  routes/v1/index.ts     # API v1 router
+  routes/v1/users.ts     # resource routes
+  middleware/
+    request-id.ts
+    error-handler.ts
+    not-found.ts
+  lib/
+    logger.ts
+    db.ts
+```
+
+Keep `app.ts` pure (build app only). Keep `server.ts` operational (listen, signals, shutdown).
+
+---
+
+## 2. App Bootstrap and Middleware Order
+
+Middleware order is architecture. The wrong order creates bugs, security gaps, or inconsistent responses.
 
 ```typescript
 import express from "express";
+import helmet from "helmet";
+import cors from "cors";
+import rateLimit from "express-rate-limit";
+import { v4 as uuidv4 } from "uuid";
+import { apiV1Router } from "./routes/v1/index";
+import { notFound } from "./middleware/not-found";
+import { errorHandler } from "./middleware/error-handler";
 
-const app = express();
-app.use(express.json()); // parse JSON bodies (like shelf's bodyParser)
+export function createApp() {
+  const app = express();
 
-app.get("/", (req, res) => {
-  res.json({ message: "Hello World" });
-});
+  // 1) Cross-cutting request context
+  app.use((req, res, next) => {
+    req.id = req.header("x-request-id") ?? uuidv4();
+    res.setHeader("x-request-id", req.id);
+    next();
+  });
 
-app.listen(3000, () => {
-  console.log("Server running on http://localhost:3000");
-});
+  // 2) Security and transport controls
+  app.use(helmet());
+  app.use(cors({ origin: ["https://app.example.com"] }));
+  app.use(
+    rateLimit({
+      windowMs: 60_000,
+      max: 120,
+      standardHeaders: true,
+      legacyHeaders: false,
+    }),
+  );
+
+  // 3) Body parsing and payload limits
+  app.use(express.json({ limit: "1mb" }));
+
+  // 4) Health endpoints
+  app.get("/health", (_req, res) => res.status(200).json({ ok: true }));
+
+  // 5) Versioned API
+  app.use("/api/v1", apiV1Router);
+
+  // 6) Fallback + centralized errors (must be last)
+  app.use(notFound);
+  app.use(errorHandler);
+
+  return app;
+}
 ```
-
-Run it: `npx ts-node server.ts` or `npx tsx server.ts`
 
 ---
 
-## 2. Routes & HTTP Methods
+## 3. Versioned Routing and Validation at Boundaries
+
+Validate all untrusted input (params, query, body) before business logic.
 
 ```typescript
-// GET — read
-app.get("/users", (req, res) => {
-  res.json(users);
+import { Router } from "express";
+import { z } from "zod";
+
+const createUserSchema = z.object({
+  email: z.string().email(),
+  name: z.string().min(1).max(120),
 });
 
-app.get("/users/:id", (req, res) => {
-  const { id } = req.params;
-  res.json(users.find((u) => u.id === id));
-});
+export const usersRouter = Router();
 
-// POST — create
-app.post("/users", (req, res) => {
-  const body = req.body;
-  // ... create user
-  res.status(201).json(newUser);
-});
+usersRouter.post("/", async (req, res, next) => {
+  try {
+    const input = createUserSchema.parse(req.body);
 
-// PUT — update (full replacement)
-app.put("/users/:id", (req, res) => {
-  // ... replace entire user
-  res.json(updatedUser);
-});
-
-// PATCH — update (partial)
-app.patch("/users/:id", (req, res) => {
-  // ... update specific fields
-  res.json(updatedUser);
-});
-
-// DELETE — remove
-app.delete("/users/:id", (req, res) => {
-  // ... delete user
-  res.status(204).send();
+    const user = await createUser(input); // domain/service layer
+    res.status(201).json({ data: user });
+  } catch (error) {
+    next(error);
+  }
 });
 ```
 
-> **Dart comparison:** Similar to `shelf_router`'s `Router()..get()..post()` pattern, but Express uses `app.get()`, `app.post()`, etc.
+Add new behavior with non-breaking changes under `/api/v1`. Introduce `/api/v2` only for breaking contract changes.
 
 ---
 
-## 3. Request & Response
+## 4. Consistent Error Contract
 
-```typescript
-app.post("/users", (req, res) => {
-  // === Request ===
-  req.params;   // URL params — /users/:id → { id: "123" }
-  req.query;    // Query string — /users?page=1 → { page: "1" }
-  req.body;     // POST/PUT body (parsed JSON)
-  req.headers;  // HTTP headers
-
-  // === Response ===
-  res.status(201).json({ id: "123", name: "Alice" }); // JSON response
-  res.status(404).json({ error: "Not found" });        // error response
-  res.status(204).send();                               // no content
-});
-```
-
-Common status codes:
-
-| Code | Meaning | When to Use |
-|------|---------|-------------|
-| `200` | OK | Successful GET, PUT, PATCH |
-| `201` | Created | Successful POST |
-| `204` | No Content | Successful DELETE |
-| `400` | Bad Request | Invalid input |
-| `404` | Not Found | Resource doesn't exist |
-| `500` | Internal Server Error | Unhandled error |
-
----
-
-## 4. Middleware
-
-Middleware = function that runs before your route handler. Like Dart shelf's `Middleware` or `Pipeline`.
+Clients should not guess error shapes. Return one structure for all failures.
 
 ```typescript
 import { Request, Response, NextFunction } from "express";
+import { ZodError } from "zod";
 
-// Logging middleware
-function logger(req: Request, res: Response, next: NextFunction) {
-  console.log(`${req.method} ${req.path}`);
-  next(); // pass to next middleware/handler — MUST call this!
-}
+type ApiErrorResponse = {
+  error: {
+    code: string;
+    message: string;
+    details?: unknown;
+    requestId?: string;
+  };
+};
 
-// Auth middleware
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  const token = req.headers.authorization;
-  if (!token) {
-    res.status(401).json({ error: "Unauthorized" });
-    return; // don't call next() — stop the chain
-  }
-  next();
-}
-
-// Apply to all routes
-app.use(logger);
-
-// Apply to specific routes
-app.get("/admin", requireAuth, (req, res) => {
-  res.json({ secret: "data" });
-});
-```
-
-### Error Middleware (4 params!)
-
-```typescript
-// Error handler — Express identifies it by the 4 parameters
-function errorHandler(
-  err: Error,
+export function errorHandler(
+  err: unknown,
   req: Request,
-  res: Response,
-  next: NextFunction,
+  res: Response<ApiErrorResponse>,
+  _next: NextFunction,
 ) {
-  console.error(err.stack);
-  res.status(500).json({ error: "Internal server error" });
-}
+  if (err instanceof ZodError) {
+    return res.status(422).json({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Request validation failed",
+        details: err.flatten(),
+        requestId: req.id,
+      },
+    });
+  }
 
-// MUST be registered last, after all routes
-app.use(errorHandler);
+  return res.status(500).json({
+    error: {
+      code: "INTERNAL_ERROR",
+      message: "Unexpected server error",
+      requestId: req.id,
+    },
+  });
+}
 ```
 
-> **Key:** Express distinguishes error middleware from regular middleware by the **4-parameter signature**. All 4 params are required even if you don't use `next`.
+Recommended status usage:
+
+- `200`/`201`/`204` for success
+- `400` for malformed request
+- `401`/`403` for auth/authz
+- `404` for missing resources
+- `409` for conflicts (duplicates, state mismatch)
+- `422` for semantic validation errors
+- `429` for rate-limited requests
+- `500`/`503` for server or dependency failures
 
 ---
 
-## 5. Router (Organize Routes)
+## 5. Idempotency and Retries for Write APIs
 
-Split routes into separate files/modules:
+External clients retry on timeouts. Protect write endpoints from duplicate side effects.
+
+Pattern:
+
+- Accept `Idempotency-Key` header on critical `POST` operations.
+- Store key + request fingerprint + response for a short TTL.
+- Return cached response when the same key is reused.
+- Reject same key with different payload (`409 Conflict`).
+
+Use this for payments, order creation, and workflow start endpoints.
+
+---
+
+## 6. Graceful Shutdown
+
+A production service must stop accepting traffic, finish in-flight requests, and close dependencies.
 
 ```typescript
-import express from "express";
+import { createServer } from "node:http";
+import { createApp } from "./app";
+import { closeDbPool } from "./lib/db";
 
-const userRouter = express.Router();
+const app = createApp();
+const server = createServer(app);
 
-userRouter.get("/", listUsers);       // GET /api/users
-userRouter.post("/", createUser);     // POST /api/users
-userRouter.get("/:id", getUser);      // GET /api/users/:id
-userRouter.put("/:id", updateUser);   // PUT /api/users/:id
-userRouter.delete("/:id", deleteUser); // DELETE /api/users/:id
+server.listen(3000, () => {
+  console.log("API listening on :3000");
+});
 
-// Mount the router with a prefix
-app.use("/api/users", userRouter);
-```
+async function shutdown(signal: string) {
+  console.log(`${signal} received, starting graceful shutdown`);
 
-> **Dart comparison:** Like `shelf_router`'s `Router()` but mounted on a path prefix with `app.use()`.
+  server.close(async () => {
+    try {
+      await closeDbPool();
+      process.exit(0);
+    } catch (error) {
+      console.error("Shutdown failed", error);
+      process.exit(1);
+    }
+  });
 
----
-
-## 6. Full Example — Todo API
-
-A complete working API in ~50 lines:
-
-```typescript
-import express from "express";
-
-const app = express();
-app.use(express.json());
-
-// In-memory "database"
-interface Todo {
-  id: string;
-  title: string;
-  done: boolean;
+  setTimeout(() => {
+    console.error("Forcing shutdown after timeout");
+    process.exit(1);
+  }, 10_000).unref();
 }
 
-let todos: Todo[] = [];
-let nextId = 1;
-
-// GET /todos — list all
-app.get("/todos", (req, res) => {
-  res.json(todos);
-});
-
-// POST /todos — create one
-app.post("/todos", (req, res) => {
-  const { title } = req.body;
-  if (!title) {
-    res.status(400).json({ error: "title is required" });
-    return;
-  }
-  const todo: Todo = { id: String(nextId++), title, done: false };
-  todos.push(todo);
-  res.status(201).json(todo);
-});
-
-// GET /todos/:id — get one
-app.get("/todos/:id", (req, res) => {
-  const todo = todos.find((t) => t.id === req.params.id);
-  if (!todo) {
-    res.status(404).json({ error: "Todo not found" });
-    return;
-  }
-  res.json(todo);
-});
-
-// DELETE /todos/:id — delete one
-app.delete("/todos/:id", (req, res) => {
-  const index = todos.findIndex((t) => t.id === req.params.id);
-  if (index === -1) {
-    res.status(404).json({ error: "Todo not found" });
-    return;
-  }
-  todos.splice(index, 1);
-  res.status(204).send();
-});
-
-// Error handler (must be last)
-app.use(
-  (err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  },
-);
-
-app.listen(3000, () => {
-  console.log("Server running on http://localhost:3000");
-});
-```
-
-Test it with curl:
-
-```bash
-# Create
-curl -X POST http://localhost:3000/todos \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Learn Express"}'
-
-# List
-curl http://localhost:3000/todos
-
-# Get one
-curl http://localhost:3000/todos/1
-
-# Delete
-curl -X DELETE http://localhost:3000/todos/1
+process.on("SIGTERM", () => void shutdown("SIGTERM"));
+process.on("SIGINT", () => void shutdown("SIGINT"));
 ```
 
 ---
 
-## Quick Reference
+## 7. Minimal Production Checklist
 
-| Express | Dart shelf equivalent | Purpose |
-|---------|----------------------|---------|
-| `express()` | `Pipeline()` | Create app |
-| `app.use(middleware)` | `pipeline.addMiddleware()` | Add middleware |
-| `app.get("/path", handler)` | `router.get("/path", handler)` | Route handler |
-| `express.Router()` | `Router()` | Group routes |
-| `req.params` | `request.params` | URL parameters |
-| `req.body` | `request.readAsString()` + parse | Request body |
-| `res.json(data)` | `Response.ok(jsonEncode(data))` | JSON response |
-| `res.status(404)` | `Response(404)` | Set status code |
-| `next()` | return `innerHandler(request)` | Pass to next handler |
+- Version your public API (`/api/v1`)
+- Validate all inputs at the HTTP boundary
+- Standardize error responses across the whole service
+- Add security middleware (`helmet`, CORS policy, payload limits)
+- Enforce rate limits on public endpoints
+- Emit request IDs and include them in logs/errors
+- Implement health checks (`/health`, optionally `/ready`)
+- Gracefully shut down HTTP server and DB pools
 
 ---
 
-**Previous:** [06-error-handling.md](./06-error-handling.md) — Error Handling & Validation
+**Previous:** [06-error-handling.md](./06-error-handling.md) - Error Handling & Validation  
+**Next:** [09-graphql-basics.md](./09-graphql-basics.md) - GraphQL Basics
