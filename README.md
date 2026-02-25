@@ -39,13 +39,13 @@ Use this loop for each lesson:
 3. **Test** success and failure paths with realistic inputs.
 4. **Operate** it: add logs/metrics, think through retries, and deployment behavior.
 
-## Study Order (~7h20m+)
+## Study Order (~7h55m+)
 
 Follow the sequence below for production systems fluency:
 
 - **Foundation**: lessons 00-07
-- **System-building topics**: lessons 09-15
-- **Integration practice**: lesson 08 (after 15)
+- **System-building topics**: lessons 09-16
+- **Integration practice**: lesson 08 (after 16)
 
 | #  | Lesson                  | Time   | What You'll Learn                        |
 |----|-------------------------|--------|------------------------------------------|
@@ -64,4 +64,5 @@ Follow the sequence below for production systems fluency:
 | 13 | [Observability Basics](lessons/13-observability-basics.md) | 25 min | Logs, metrics, traces, Sentry, OpenTelemetry, alerts |
 | 14 | [Workflow Orchestration](lessons/14-workflow-orchestration.md) | 30 min | Durable workflows, retries, cancellation/resume, resilience patterns |
 | 15 | [Microservices and DevOps](lessons/15-microservices-devops.md) | 30 min | Monolith vs microservices, resilience, CI/CD, platforms, SLOs, security |
+| 16 | [NestJS](lessons/16-nestjs.md) | 35 min | Structured framework with DI, modules, decorators — Flutter patterns on the backend |
 | 08 | [Exercises](lessons/08-exercises.md) | 60+ min | End-to-end drills to combine typing, reliability, and operations thinking |

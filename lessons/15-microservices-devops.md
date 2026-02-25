@@ -240,4 +240,4 @@ Useful for communication across teams, but production architecture should always
 ---
 
 **Previous:** [14-workflow-orchestration.md](./14-workflow-orchestration.md) - Workflow Orchestration in TypeScript  
-**Next:** [08-exercises.md](./08-exercises.md) - Production Exercises
+**Next:** [16-nestjs.md](./16-nestjs.md) - NestJS — Structured Backend Framework
