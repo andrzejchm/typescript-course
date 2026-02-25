@@ -232,5 +232,159 @@ PostgreSQL reliability comes from discipline in migrations, indexing, and transa
 
 ---
 
+## 9. PostGIS — Geospatial Data
+
+PostGIS is a PostgreSQL extension that adds geographic and geometry types plus spatial query functions. It turns Postgres into a full geospatial database.
+
+If you've used `google_maps_flutter` or `geolocator` to work with lat/lng on the client, PostGIS is where that data lives and gets queried on the server.
+
+### Enabling PostGIS
+
+```sql
+CREATE EXTENSION IF NOT EXISTS postgis;
+```
+
+### Core Types
+
+- `GEOMETRY` — flat-plane math (maps, floor plans)
+- `GEOGRAPHY` — spherical-earth math (real-world lat/lng) — use this for most cases
+- `POINT`, `LINESTRING`, `POLYGON` — shape subtypes
+
+How to store a location:
+
+```sql
+CREATE TABLE locations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  coordinates GEOGRAPHY(POINT, 4326) NOT NULL  -- 4326 = WGS84 (GPS standard)
+);
+
+-- Insert a point (longitude first, then latitude!)
+INSERT INTO locations (name, coordinates)
+VALUES ('Office', ST_MakePoint(-73.9857, 40.7484)::geography);
+```
+
+> ⚠️ PostGIS uses **longitude, latitude** order — not lat, lng like Google Maps. This WILL trip you up.
+
+### Essential Queries
+
+Find locations within a radius:
+
+```sql
+-- Find all locations within 5km of a point
+SELECT name,
+       ST_Distance(coordinates, ST_MakePoint(-73.9857, 40.7484)::geography) AS distance_meters
+FROM locations
+WHERE ST_DWithin(coordinates, ST_MakePoint(-73.9857, 40.7484)::geography, 5000)
+ORDER BY distance_meters;
+```
+
+Find nearest N locations:
+
+```sql
+-- Find 10 nearest locations (uses spatial index efficiently)
+SELECT name,
+       ST_Distance(coordinates, ST_MakePoint(-73.9857, 40.7484)::geography) AS distance_meters
+FROM locations
+ORDER BY coordinates <-> ST_MakePoint(-73.9857, 40.7484)::geography
+LIMIT 10;
+```
+
+Check if a point is inside a polygon (geofencing):
+
+```sql
+-- Is this point inside the delivery zone?
+SELECT ST_Contains(
+  zone_polygon::geometry,
+  ST_MakePoint(-73.9857, 40.7484)::geometry
+) AS is_inside
+FROM delivery_zones
+WHERE id = $1;
+```
+
+Distance between two points:
+
+```sql
+SELECT ST_Distance(
+  ST_MakePoint(-73.9857, 40.7484)::geography,  -- New York
+  ST_MakePoint(-0.1278, 51.5074)::geography      -- London
+) / 1000 AS distance_km;
+-- Returns ~5570 km
+```
+
+### Spatial Indexes
+
+Without a spatial index, every spatial query scans all rows. Always add one.
+
+```sql
+CREATE INDEX idx_locations_coordinates ON locations USING GIST (coordinates);
+```
+
+GIST index is to spatial queries what B-tree index is to regular `WHERE` clauses.
+
+### Using PostGIS from TypeScript
+
+Works with `pg`, `postgres.js`, or any driver that supports parameterized queries:
+
+```typescript
+// Insert a location
+await sql`
+  INSERT INTO locations (name, coordinates)
+  VALUES (${name}, ST_MakePoint(${lng}, ${lat})::geography)
+`;
+
+// Find nearby
+interface NearbyLocation {
+  id: string;
+  name: string;
+  distance_meters: number;
+}
+
+const nearby = await sql<NearbyLocation[]>`
+  SELECT id, name,
+    ST_Distance(coordinates, ST_MakePoint(${lng}, ${lat})::geography) AS distance_meters
+  FROM locations
+  WHERE ST_DWithin(coordinates, ST_MakePoint(${lng}, ${lat})::geography, ${radiusMeters})
+  ORDER BY distance_meters
+`;
+```
+
+### Common Functions Cheat Sheet
+
+| Function | What it does |
+|---|---|
+| `ST_MakePoint(lng, lat)` | Create a point |
+| `ST_Distance(a, b)` | Distance in meters (geography) |
+| `ST_DWithin(a, b, meters)` | Is distance within threshold? (uses index!) |
+| `ST_Contains(polygon, point)` | Is point inside polygon? |
+| `ST_Area(polygon)` | Area in square meters |
+| `ST_AsGeoJSON(geom)` | Convert to GeoJSON (for frontend maps) |
+| `ST_GeomFromGeoJSON(json)` | Parse GeoJSON into geometry |
+| `<->` operator | KNN distance operator (for ORDER BY nearest) |
+
+### Flutter/Dart ↔ PostGIS Mapping
+
+| Flutter / Client | PostGIS / Server |
+|---|---|
+| `LatLng(lat, lng)` | `ST_MakePoint(lng, lat)` ⚠️ reversed! |
+| `Geolocator.distanceBetween()` | `ST_Distance()` |
+| `google_maps_flutter` polygon | `ST_Contains()` geofence check |
+| GeoJSON from API | `ST_AsGeoJSON()` / `ST_GeomFromGeoJSON()` |
+
+### When to Use PostGIS
+
+- Location-based features: find nearby, delivery zones, store locators
+- Geofencing: is user inside area X?
+- Route and area calculations
+- Any app that shows things on a map and needs server-side spatial queries
+
+### When NOT to Use PostGIS
+
+- Simple lat/lng storage without spatial queries — just use two `DOUBLE PRECISION` columns
+- Client-only distance calculations — use Haversine formula in JS/Dart
+- Full GIS workflows — consider specialized tools
+
+---
+
 **Previous:** [07-express-basics.md](./07-express-basics.md) - Express Basics  
 **Next:** [09-backend-concepts.md](./09-backend-concepts.md) - Backend Concepts
