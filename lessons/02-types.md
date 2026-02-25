@@ -1,16 +1,120 @@
-# 02 - Types for Domain Boundaries and API Contracts
+# 02 - Types from Basics to Production Contracts
 
-TypeScript is most valuable at boundaries: request/response, persistence, and message passing.
+This lesson restores the core type basics first, then moves to boundary-safe production modeling.
 
-## Why this matters in production
+## 1) Beginner foundation
 
-- Domain modeling reduces invalid states.
-- Clear API contracts prevent accidental breaking changes.
-- Utility types let you evolve contracts safely without duplicating models.
+### Inference vs explicit annotations (`const` and `let`)
 
-## Core concepts with code
+```typescript
+const count = 3;        // inferred as 3 (literal)
+let total = 3;          // inferred as number (wider, because mutable)
+let price: number = 10; // explicit annotation
+```
 
-### 1) Separate external DTOs from internal domain models
+- `const` keeps values stable, so TS can infer narrower literal types more often.
+- `let` is mutable, so TS usually widens to a broader type.
+- Add explicit annotations when it improves clarity or prevents accidental widening.
+
+### Optional vs nullable (`?`, `undefined`, `null`, `??`)
+
+```typescript
+type Profile = {
+  nickname?: string; // string | undefined
+  bio: string | null;
+};
+
+function label(profile: Profile): string {
+  return profile.nickname ?? profile.bio ?? "anonymous";
+}
+```
+
+- `nickname?` means property may be missing (`undefined`).
+- `null` is an explicit value, usually "known empty".
+- `??` falls back only for `null` or `undefined` (not for empty string or 0).
+
+### Union basics and narrowing
+
+```typescript
+type Id = string | number;
+
+function formatId(id: Id): string {
+  if (typeof id === "string") {
+    return id.toUpperCase();
+  }
+  return `#${id}`;
+}
+
+type ApiError = { message: string };
+type ApiOk = { data: { id: string } };
+
+function readResponse(result: ApiError | ApiOk): string {
+  if ("data" in result) {
+    return result.data.id;
+  }
+  if (result.message === "not-found") {
+    return "missing";
+  }
+  return result.message;
+}
+```
+
+Common narrowing tools: `typeof`, `in`, and equality checks.
+
+### Literal widening and `as const`
+
+```typescript
+const role = "admin"; // "admin"
+let mutableRole = "admin"; // string
+
+const config = {
+  env: "dev",
+  retry: 3,
+} as const;
+```
+
+`as const` keeps object values readonly and literal (`"dev"`, `3`) instead of widened (`string`, `number`).
+
+### `unknown` workflow: untrusted -> checked -> trusted
+
+```typescript
+type User = { id: string; email: string };
+
+function isUser(value: unknown): value is User {
+  if (typeof value !== "object" || value === null) return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.id === "string" && typeof obj.email === "string";
+}
+
+function parseUser(json: string): User {
+  const raw: unknown = JSON.parse(json);
+  if (!isUser(raw)) throw new Error("Invalid user payload");
+  return raw;
+}
+```
+
+Why `as` is not validation:
+
+```typescript
+const raw: unknown = JSON.parse('{"id":123}');
+const user = raw as User; // compiler trust only, no runtime check
+```
+
+`as` changes TypeScript's belief, not the runtime value.
+
+## 2) Flutter mapping
+
+| Dart / Flutter | TypeScript |
+|---|---|
+| `final` helps immutability | `const` for bindings, `readonly` in type design |
+| Nullable type `String?` | Union with `null` and/or `undefined` |
+| `is` type checks | `typeof`, `in`, equality checks, custom type guards |
+| `Map<String, dynamic>` at boundaries | `unknown` first, then validate and narrow |
+| `const` objects/lists | `as const` for readonly literal inference |
+
+## 3) Production patterns
+
+### Separate DTOs from domain models
 
 ```typescript
 type UserDto = {
@@ -34,76 +138,42 @@ function mapUser(dto: UserDto): User {
 }
 ```
 
-Do not leak wire format through the whole app.
-
-### 2) Constrain state with literal unions
+### Use utility types to derive boundary contracts
 
 ```typescript
-type PaymentStatus = "pending" | "authorized" | "captured" | "failed";
-
-type Payment = {
-  id: string;
-  status: PaymentStatus;
-};
-```
-
-This is lighter than enums and prevents invalid strings.
-
-### 3) Use utility types in realistic flows
-
-```typescript
-type User = {
+type Account = {
   id: string;
   email: string;
   name: string;
   role: "admin" | "member";
 };
 
-type CreateUserInput = Omit<User, "id">;
-type UpdateUserInput = Partial<Pick<User, "email" | "name" | "role">>;
-type UserView = Pick<User, "id" | "email" | "name">;
+type CreateAccountInput = Omit<Account, "id">;
+type PatchAccountInput = Partial<Pick<Account, "email" | "name" | "role">>;
+type AccountView = Pick<Account, "id" | "email" | "name">;
 ```
 
-### 4) Dictionary-like structures with `Record`
+### Keep contract types explicit at boundaries
 
-```typescript
-type FeatureFlags = Record<string, boolean>;
+- Parse external input as `unknown`.
+- Validate with type guards or schema libraries.
+- Convert DTO -> domain in mapper functions.
+- Return stable view/output types from services and controllers.
 
-const flags: FeatureFlags = {
-  newCheckout: true,
-  betaBanner: false,
-};
-```
+## 4) Pitfalls
 
-### 5) Prefer `unknown` at trust boundaries
+- Reusing wire DTO types everywhere in app logic.
+- Using `as SomeType` to silence errors on external data.
+- Confusing optional (`?`) with nullable (`| null`) semantics.
+- Over-widening literals by using `let` when values should stay fixed.
+- Creating giant unions without clear narrowing strategy.
 
-```typescript
-function parseJson(input: string): unknown {
-  return JSON.parse(input);
-}
-```
+## 5) Practice tasks
 
-`unknown` forces explicit narrowing instead of unsafe access.
-
-## Best practices
-
-- Model domain types around business meaning, not transport quirks.
-- Keep boundary mappers explicit and testable.
-- Use utility types to derive variants from one source model.
-- Avoid `any`; start with `unknown` and narrow deliberately.
-
-## Common anti-patterns / pitfalls
-
-- Reusing API DTO types as domain types everywhere.
-- Copy-pasting near-identical type definitions.
-- Using `as User` on parsed JSON without validation.
-- Overusing massive unions where a discriminated union is clearer.
-
-## Short practice tasks
-
-1. Define `OrderDto` and `Order` where date strings become `Date` values in a mapper.
-2. Create `CreateOrderInput` and `PatchOrderInput` from one `Order` type using utility types.
-3. Replace one `any` API response with `unknown` and add narrowing.
-4. Add a `Status` union to one model and remove raw string literals in callers.
+1. Write examples that compare `const` inference, `let` widening, and explicit annotation.
+2. Model one type with both optional and nullable fields, then add safe defaults with `??`.
+3. Build a union type and narrow it with `typeof`, `in`, and equality checks.
+4. Replace one unsafe `as` on parsed JSON with `unknown` + type guard validation.
+5. Create `OrderDto` and `Order`, then derive `CreateOrderInput` and `PatchOrderInput` using utility types.
 
 Next: [03-functions-async.md](./03-functions-async.md)

@@ -1,45 +1,132 @@
 # 05 - Interfaces, Type Aliases, Generics, and Discriminated Unions
 
-These tools help you model domain concepts safely while keeping APIs ergonomic.
+This lesson builds from beginner basics to production-safe modeling.
 
-## Why this matters in production
+## 1) Foundation concepts (clear and simple)
 
-- Correct domain models remove impossible states.
-- Generics prevent copy-paste logic across entities.
-- Clear `interface` vs `type` usage keeps codebases consistent.
+### `interface` vs `type` with beginner examples
 
-## Core concepts with code
-
-### 1) `interface` vs `type` in practical terms
+Both describe shapes in TypeScript.
 
 ```typescript
-interface Customer {
+interface User {
   id: string;
   email: string;
 }
 
-type CustomerId = Customer["id"];
-type CustomerWithTier = Customer & { tier: "free" | "pro" };
+type UserRole = "admin" | "member";
 ```
 
-Guideline:
-- Use `interface` for object contracts that may be extended/implemented.
-- Use `type` for unions, intersections, mapped helpers, and aliases.
+Use this rule of thumb in production:
+- `interface`: object contracts that classes or modules may implement/extend.
+- `type`: unions, intersections, aliases, mapped/utility-style compositions.
 
-### 2) Generics for reusable, type-safe operations
+### Generics, step by step
+
+#### Step A: simple generic function
+
+```typescript
+function first<T>(items: T[]): T | undefined {
+  return items[0];
+}
+
+const a = first([10, 20]); // number | undefined
+const b = first(["x", "y"]); // string | undefined
+```
+
+`T` means "some type provided later".
+
+#### Step B: generic interface
+
+```typescript
+interface ApiResponse<T> {
+  ok: boolean;
+  data: T;
+}
+
+const userResponse: ApiResponse<{ id: string; name: string }> = {
+  ok: true,
+  data: { id: "u1", name: "Ana" },
+};
+```
+
+#### Step C: constrained generic (`extends`)
 
 ```typescript
 function byId<T extends { id: string }>(items: T[], id: string): T | undefined {
   return items.find((item) => item.id === id);
 }
-
-const found = byId(
-  [{ id: "u1", name: "Ana" }, { id: "u2", name: "Lee" }],
-  "u2",
-);
 ```
 
-### 3) Generic API envelope
+Constraint means: `T` can vary, but must include `id: string`.
+
+#### Step D: `keyof` and indexed access `T[K]`
+
+```typescript
+function pluck<T, K extends keyof T>(obj: T, key: K): T[K] {
+  return obj[key];
+}
+
+const email = pluck({ id: "u1", email: "a@example.com" }, "email");
+// email: string
+```
+
+`keyof T` = all valid keys of `T`. `T[K]` = value type at that key.
+
+### Discriminated unions in simple terms
+
+A discriminated union is one object type with multiple valid variants, each with a clear tag field.
+
+```typescript
+type PaymentState =
+  | { kind: "pending" }
+  | { kind: "failed"; reason: string }
+  | { kind: "paid"; receiptId: string };
+```
+
+The `kind` field lets TypeScript narrow safely.
+
+### Exhaustive checks (catch missing cases early)
+
+```typescript
+function paymentLabel(state: PaymentState): string {
+  switch (state.kind) {
+    case "pending":
+      return "Pending";
+    case "failed":
+      return `Failed: ${state.reason}`;
+    case "paid":
+      return `Paid (${state.receiptId})`;
+    default: {
+      const neverState: never = state;
+      return neverState;
+    }
+  }
+}
+```
+
+If a new variant is added and not handled, this pattern fails at compile time.
+
+## 2) Flutter mapping
+
+| Flutter/Dart | TypeScript |
+|---|---|
+| generic classes/functions (`Result<T>`) | generic types/functions (`ApiResponse<T>`) |
+| `sealed class` states | discriminated unions (`kind: ...`) |
+| `switch` over sealed types | exhaustive `switch` + `never` check |
+| interface/abstract contracts | `interface` contracts |
+
+If you model Bloc/Cubit states as sealed classes in Dart, discriminated unions are the closest TypeScript equivalent.
+
+## 3) Production patterns
+
+### Consistent interface/type convention
+
+- Use `interface` for DTO/entity-like object contracts.
+- Use `type` for unions (`A | B`), intersections (`A & B`), and aliases.
+- Keep this consistent repo-wide to reduce review noise.
+
+### Reusable generic envelopes
 
 ```typescript
 type ApiResult<T> =
@@ -54,65 +141,22 @@ function unwrap<T>(result: ApiResult<T>): T {
 }
 ```
 
-### 4) Discriminated unions for domain state
+### Prefer explicit state modeling over boolean flags
 
-```typescript
-type InvoiceState =
-  | { kind: "draft" }
-  | { kind: "sent"; sentAtIso: string }
-  | { kind: "paid"; paidAtIso: string; txId: string };
+Instead of `{ isLoading, isError, isSuccess }`, use one discriminated union state.
 
-function canSend(state: InvoiceState): boolean {
-  return state.kind === "draft";
-}
-```
+## 4) Pitfalls
 
-### 5) Exhaustive handling
-
-```typescript
-function labelState(state: InvoiceState): string {
-  switch (state.kind) {
-    case "draft":
-      return "Draft";
-    case "sent":
-      return `Sent at ${state.sentAtIso}`;
-    case "paid":
-      return `Paid with ${state.txId}`;
-    default: {
-      const neverState: never = state;
-      return neverState;
-    }
-  }
-}
-```
-
-### 6) Dart mapping
-
-| Dart | TypeScript |
-|---|---|
-| `abstract interface class` | `interface` |
-| generic methods/classes | generic functions/types |
-| sealed states | discriminated unions |
-
-## Best practices
-
-- Prefer discriminated unions over boolean-flag combinations.
-- Constrain generics (`<T extends ...>`) when behavior needs specific fields.
-- Keep one naming convention for discriminants (`kind` or `type`).
-- Make exhaustive switches a default habit for domain states.
-
-## Common anti-patterns / pitfalls
-
-- Using `any` instead of a generic type parameter.
-- Modeling state with multiple booleans (`isLoading`, `isError`, `isSuccess`).
+- Reaching for `any` instead of a generic parameter.
+- Using unconstrained generics when logic requires specific fields.
 - Mixing `interface` and `type` randomly with no team convention.
-- Forgetting exhaustive handling when union variants grow.
+- Forgetting exhaustive switches when union variants grow.
 
-## Short practice tasks
+## 5) Short practice tasks
 
-1. Replace one boolean-state object with a discriminated union.
-2. Write a generic `pluck<T, K extends keyof T>` helper.
-3. Add exhaustive `switch` checks to one state-render function.
-4. Document your local rule for when to choose `interface` vs `type`.
+1. Write `first<T>(items: T[])` and use it with numbers and strings.
+2. Build `ApiResponse<T>` and apply it to two different payloads.
+3. Implement `pluck<T, K extends keyof T>(obj, key)` and test inferred return types.
+4. Replace one boolean-heavy UI/domain state with a discriminated union plus exhaustive switch.
 
 Next: [06-error-handling.md](./06-error-handling.md)

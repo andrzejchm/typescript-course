@@ -1,16 +1,82 @@
-# 03 - Functions and Async in Production
+# 03 - Functions and Async from Basics to Production
 
-This lesson focuses on async correctness, bounded concurrency, cancellation, and event-loop safety.
+This lesson starts with Promise fundamentals, then layers in production-safe async patterns.
 
-## Why this matters in production
+## 1) Beginner foundation
 
-- Async mistakes cause latency spikes, duplicate work, and stuck requests.
-- Good function signatures reduce misuse and make refactors safer.
-- Event-loop blocking can take down throughput even when code is "correct".
+### Promise fundamentals
 
-## Core concepts with code
+- A `Promise<T>` represents a value that is not ready yet.
+- It can be `pending`, `fulfilled`, or `rejected`.
+- `await` pauses only the current async function, not the whole process.
 
-### 1) Function signatures as contracts
+```typescript
+function delayedValue(): Promise<number> {
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(42), 100);
+  });
+}
+
+async function demo() {
+  const value = await delayedValue();
+  return value + 1;
+}
+```
+
+### `async`/`await` behavior
+
+```typescript
+async function parseAmount(input: string): Promise<number> {
+  const amount = Number(input);
+  if (Number.isNaN(amount)) {
+    throw new Error("Invalid amount");
+  }
+  return amount;
+}
+```
+
+- `async` function always returns a Promise.
+- `throw` inside `async` becomes a rejected Promise.
+
+### Sequential vs parallel execution
+
+Sequential (step B depends on step A):
+
+```typescript
+async function loadOrderFlow(orderId: string) {
+  const order = await fetchOrder(orderId);
+  const invoice = await fetchInvoice(order.invoiceId);
+  return { order, invoice };
+}
+```
+
+Parallel (independent calls):
+
+```typescript
+async function loadDashboard(userId: string) {
+  const [profile, notifications] = await Promise.all([
+    fetchProfile(userId),
+    fetchNotifications(userId),
+  ]);
+  return { profile, notifications };
+}
+```
+
+Use parallelism only when operations are independent.
+
+## 2) Flutter mapping
+
+| Dart / Flutter | TypeScript / Node |
+|---|---|
+| `Future<T>` | `Promise<T>` |
+| `await` in `async` function | same model with `async`/`await` |
+| `Future.wait([...])` | `Promise.all([...])` |
+| `Future.wait` with error handling variants | `Promise.allSettled([...])` |
+| cancellation patterns (`CancelableOperation`, stream cancel) | `AbortController` + `AbortSignal` |
+
+## 3) Production patterns
+
+### Function signatures as contracts
 
 ```typescript
 type CreateInvoiceInput = {
@@ -19,29 +85,12 @@ type CreateInvoiceInput = {
   dueDateIso: string;
 };
 
-function createInvoice(input: CreateInvoiceInput): { id: string } {
+async function createInvoice(input: CreateInvoiceInput): Promise<{ id: string }> {
   return { id: `inv_${input.customerId}` };
 }
 ```
 
-Object parameters scale better than long positional args.
-
-### 2) Sequential vs parallel work
-
-```typescript
-async function loadDashboard(userId: string) {
-  const [profile, notifications] = await Promise.all([
-    fetchProfile(userId),
-    fetchNotifications(userId),
-  ]);
-
-  return { profile, notifications };
-}
-```
-
-Use `Promise.all` only when tasks are independent.
-
-### 3) Handle partial failure with `Promise.allSettled`
+### Partial-failure handling with `Promise.allSettled`
 
 ```typescript
 const results = await Promise.allSettled([
@@ -56,62 +105,59 @@ for (const result of results) {
 }
 ```
 
-### 4) Cancellation basics with `AbortController`
+### Cancellation with `AbortController`
 
 ```typescript
-async function fetchWithTimeout(url: string, timeoutMs: number) {
+async function fetchUser(userId: string, signal: AbortSignal) {
+  const response = await fetch(`/api/users/${userId}`, { signal });
+  return response.json();
+}
+```
+
+Pass `signal` through your async stack so requests can stop promptly.
+
+### Timeout wrapper
+
+```typescript
+async function withTimeout<T>(
+  task: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number,
+): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(url, { signal: controller.signal });
-    return await response.json();
+    return await task(controller.signal);
   } finally {
     clearTimeout(timer);
   }
 }
 ```
 
-### 5) Avoid blocking the event loop
+### Avoid event-loop blocking
 
 ```typescript
 function expensiveSyncWork(input: number[]): number {
-  // Simulated CPU-heavy operation
   return input.reduce((acc, n) => acc + n * n, 0);
 }
-
-// Better: run heavy CPU tasks outside request path (worker/queue).
 ```
 
-In Node.js, CPU-heavy sync code blocks all requests on that process.
+In Node.js, heavy sync CPU work blocks all requests in that process. Move heavy work to workers, queues, or separate services.
 
-### 6) Dart mapping
+## 4) Pitfalls
 
-| Dart | TypeScript |
-|---|---|
-| `Future<T>` | `Promise<T>` |
-| `Future.wait` | `Promise.all` |
-| cancellation via `CancelableOperation` patterns | `AbortController` |
+- Accidentally serializing independent work with `await` in sequence.
+- Fire-and-forget Promises without error handling.
+- Using `Promise.all` when one failure should not fail everything.
+- Ignoring cancellation and timeout requirements in network paths.
+- Doing CPU-heavy loops inside request handlers.
 
-## Best practices
+## 5) Practice tasks
 
-- Prefer `async/await` over mixed `.then()` chains.
-- Keep async functions small and explicit about return types.
-- Use timeouts/cancellation for network operations.
-- Bound fan-out when calling many downstream services.
-
-## Common anti-patterns / pitfalls
-
-- `await` inside loops when parallelism is safe and needed.
-- Fire-and-forget promises with no error handling.
-- Ignoring cancellation signals in long request paths.
-- Running expensive synchronous work in HTTP handlers.
-
-## Short practice tasks
-
-1. Refactor sequential API calls into `Promise.all` where safe.
-2. Add timeout + abort support to one `fetch` helper.
-3. Convert a `.then()` chain into `async/await` with explicit error propagation.
-4. Find one loop with `await` and justify whether it should stay sequential.
+1. Convert one sequential pair of independent fetches to `Promise.all`.
+2. Add `AbortSignal` support to one API helper and propagate it from caller to callee.
+3. Wrap one network operation with `withTimeout` and verify abort behavior.
+4. Replace one `Promise.all` use with `Promise.allSettled` where partial results are acceptable.
+5. Find one sync CPU-heavy function and propose how to move it off the request path.
 
 Next: [04-arrays-objects.md](./04-arrays-objects.md)

@@ -1,22 +1,17 @@
 # 00 - Setup for Production TypeScript
 
-Get to a repeatable local workflow before writing features. This is the baseline used by healthy TS teams.
+Before learning syntax, set up a feedback loop you can trust every day.
 
-## Why this matters in production
+## 1) Beginner foundation
 
-- Most outages come from weak feedback loops, not weak syntax knowledge.
-- Strict compiler settings catch bugs before runtime.
-- A predictable run/test/check loop makes refactors safer and faster.
-
-## Core concepts with code
-
-### 1) Install and verify toolchain
+### Install and verify
 
 ```bash
-# Use current LTS (20+ is fine for this course)
 node -v
 npm -v
 ```
+
+Use a current Node LTS (20+ is fine for this course).
 
 ```bash
 git clone <this-repo>
@@ -24,9 +19,12 @@ cd typescript-course
 npm install
 ```
 
-### 2) Use a strict compiler baseline
+### Understand the two core config files
 
-`tsconfig.json` should stay strict:
+- `package.json`: project metadata + scripts + dependencies. Think of it as `pubspec.yaml` plus runnable commands.
+- `tsconfig.json`: TypeScript compiler rules. Think of it as `analysis_options.yaml` plus compiler output settings.
+
+Typical strict baseline:
 
 ```jsonc
 {
@@ -39,70 +37,69 @@ npm install
 }
 ```
 
-Why this is useful:
-- `strict`: catches nullability and unsafe assumptions.
-- `noUncheckedIndexedAccess`: forces you to handle missing array/object entries.
+- `strict`: catches nullability and unsafe assumptions early.
+- `noUncheckedIndexedAccess`: forces handling missing keys/indexes (`value | undefined`).
 
-### 3) Run loop you will use every day
+### Daily loop you will run repeatedly
 
 ```bash
-# Fast iteration
 npm run dev
-
-# One-off run
 npm run run
-
-# Tests
 npm test
-
-# Test watch mode
-npm run test:watch
+npm run typecheck
 ```
 
-### 4) Optional single-command quality gate
+What each command tells you:
 
-Many teams add a single check script (similar to `dart analyze` + `dart test`):
+- `npm run dev`: fast local iteration; good for trying small changes quickly.
+- `npm run run`: one clean execution of your program entrypoint.
+- `npm test`: behavior checks; "does the code do what we expect?"
+- `npm run typecheck`: compile-time safety checks; "are types and contracts consistent?"
+
+Many teams also add:
 
 ```jsonc
 {
   "scripts": {
-    "typecheck": "tsc --noEmit",
     "verify": "npm run typecheck && npm test"
   }
 }
 ```
 
-Run `npm run verify` before every commit.
+`npm run verify` is the pre-commit confidence check.
 
-### 5) Flutter/Dart mapping (tooling)
+## 2) Flutter mapping
 
 | Dart / Flutter | TypeScript / Node |
 |---|---|
 | `dart run` | `npm run run` or `npx tsx file.ts` |
 | `dart test` | `npm test` |
-| `dart analyze` | `tsc --noEmit` (+ optional ESLint) |
+| `dart analyze` | `npm run typecheck` (`tsc --noEmit`) |
 | `pubspec.yaml` | `package.json` |
 | `analysis_options.yaml` | `tsconfig.json` |
 
-## Best practices
+Mental shift: in TS projects, scripts in `package.json` become your team workflow API.
 
-- Keep `strict` enabled; do not lower type safety to make errors go away.
-- Prefer small scripts that everyone can run (`dev`, `test`, `typecheck`, `verify`).
-- Run tests locally before pushing.
-- Treat editor diagnostics as first-class signals, not noise.
+## 3) Production patterns
 
-## Common anti-patterns / pitfalls
+- Keep a small standard command set: `dev`, `run`, `test`, `typecheck`, `verify`.
+- Keep `strict` enabled from day 1; fixing types later is expensive.
+- Make local checks cheap and routine; CI should confirm, not surprise.
+- Treat editor diagnostics like failing tests: resolve them instead of ignoring.
 
-- Turning off strict flags to "move faster".
-- Depending only on manual app runs with no tests.
-- Skipping local checks and relying only on CI.
-- Using `any` to silence compiler errors in setup code.
+## 4) Pitfalls
 
-## Short practice tasks
+- Turning off strict flags to "unblock" temporary errors.
+- Only running the app manually and skipping tests/typecheck.
+- Adding dependencies without adding a script or usage path.
+- Using `any` in setup code and spreading unsafety into later lessons.
 
-1. Run `npm run dev` and confirm edits in `src/playground.ts` execute immediately.
-2. Run `npm test` and inspect at least one test failure message.
-3. Add a temporary out-of-bounds array read in `src/playground.ts` and observe `noUncheckedIndexedAccess` behavior.
-4. Create a personal pre-commit habit: `npm run verify` (or equivalent) before every commit.
+## 5) Practice tasks
+
+1. Run `npm run dev`, edit `src/playground.ts`, and confirm quick feedback.
+2. Run `npm run run` and compare its output with the dev loop behavior.
+3. Run `npm test` and read one failing assertion message end-to-end.
+4. Run `npm run typecheck`, then introduce and fix one intentional type error.
+5. Create your pre-commit habit: `npm run verify`.
 
 Next: [01-dart-to-ts.md](./01-dart-to-ts.md)

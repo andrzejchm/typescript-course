@@ -1,16 +1,64 @@
 # 06 - Error Handling, Validation, and Propagation Strategy
 
-Production systems need predictable failure behavior, not just `try/catch` blocks.
+Reliable systems handle failure deliberately.
+Start from the basics, then layer production structure on top.
 
-## Why this matters in production
+## 1) Foundation concepts (clear and simple)
 
-- Different failures need different actions (retry, alert, user message, fail fast).
-- Typed errors improve observability and recovery.
-- Runtime validation protects trust boundaries where TypeScript cannot.
+### Basic `try/catch`
 
-## Core concepts with code
+```typescript
+function parseAmount(raw: string): number {
+  try {
+    const value = Number(raw);
+    if (Number.isNaN(value)) {
+      throw new Error("amount must be a number");
+    }
+    return value;
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      throw new Error(`Invalid amount: ${error.message}`);
+    }
+    throw new Error("Invalid amount: unknown error");
+  }
+}
+```
 
-### 1) Error taxonomy (operational vs programmer)
+Important beginner point: in TypeScript, the `catch` variable is `unknown`.
+You must narrow it (for example with `instanceof Error`) before using `.message`.
+
+### TypeScript types are compile-time only
+
+TypeScript helps before runtime. It does not validate incoming JSON, HTTP payloads, env vars, or queue messages at runtime.
+
+```typescript
+type User = { email: string };
+
+const data = JSON.parse('{"email": 123}') as User;
+// Compiles, but runtime value is wrong.
+```
+
+You still need runtime validation for external data.
+
+### When to handle locally vs rethrow
+
+- Handle locally when you can recover meaningfully (fallback, retry, default behavior).
+- Rethrow when the current layer cannot decide safely; let a higher boundary translate.
+
+## 2) Flutter mapping
+
+| Flutter/Dart | TypeScript |
+|---|---|
+| `try/catch` with `on FormatException` | `try/catch` + `instanceof` narrowing |
+| custom `Exception` classes | custom `Error` classes |
+| validate JSON/model input | runtime schema validation (for example Zod) |
+| map domain failures to UI states | map typed errors to HTTP/transport responses |
+
+If you map exceptions to user-friendly states in Flutter, do the same mapping at API boundaries in TypeScript.
+
+## 3) Production patterns
+
+### Small shared error taxonomy
 
 ```typescript
 type ErrorKind = "validation" | "not_found" | "conflict" | "dependency" | "internal";
@@ -20,14 +68,15 @@ class AppError extends Error {
     public kind: ErrorKind,
     message: string,
     public metadata: Record<string, unknown> = {},
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "AppError";
   }
 }
 ```
 
-### 2) Throw typed errors with context
+### Throw typed errors with context
 
 ```typescript
 function requireEmail(email: string | undefined): string {
@@ -38,7 +87,25 @@ function requireEmail(email: string | undefined): string {
 }
 ```
 
-### 3) Runtime validation with Zod at boundaries
+### Boundary translation (catch low, translate once)
+
+```typescript
+async function getUserOrThrow(id: string) {
+  const response = await fetch(`https://example.com/users/${id}`);
+
+  if (response.status === 404) {
+    throw new AppError("not_found", "user not found", { id });
+  }
+
+  if (!response.ok) {
+    throw new AppError("dependency", "user service failed", { status: response.status });
+  }
+
+  return response.json();
+}
+```
+
+### Runtime validation with Zod at trust boundaries
 
 ```typescript
 import { z } from "zod";
@@ -61,24 +128,7 @@ function parseCreateUser(payload: unknown): CreateUserInput {
 }
 ```
 
-### 4) Propagate with translation at layer boundaries
-
-```typescript
-async function getUserOrThrow(id: string) {
-  const response = await fetch(`https://example.com/users/${id}`);
-  if (response.status === 404) {
-    throw new AppError("not_found", "user not found", { id });
-  }
-  if (!response.ok) {
-    throw new AppError("dependency", "user service failed", { status: response.status });
-  }
-  return response.json();
-}
-```
-
-Catch low, translate once, and rethrow typed errors upward.
-
-### 5) Convert errors to transport-safe responses
+### Transport-safe mapping and logging context
 
 ```typescript
 function toHttpStatus(error: unknown): number {
@@ -90,35 +140,29 @@ function toHttpStatus(error: unknown): number {
   }
   return 500;
 }
+
+function logError(error: unknown, context: Record<string, unknown>): void {
+  if (error instanceof AppError) {
+    console.error("app_error", { kind: error.kind, message: error.message, ...context, ...error.metadata });
+    return;
+  }
+  console.error("unknown_error", { error, ...context });
+}
 ```
 
-### 6) Dart mapping
+## 4) Pitfalls
 
-| Dart | TypeScript |
-|---|---|
-| custom `Exception` hierarchy | custom `Error` classes |
-| `try/catch` with typed checks | `try/catch` + `instanceof` narrowing |
-| JSON validation packages | Zod runtime schemas + inferred types |
+- Swallowing errors (`catch {}`) and returning fake success.
+- Throwing raw strings instead of `Error`/`AppError` objects.
+- Trusting `as SomeType` for external data without runtime validation.
+- Mapping all failures to `500` with no distinction.
+- Logging errors without request/user/context metadata.
 
-## Best practices
+## 5) Short practice tasks
 
-- Define a small shared error taxonomy for the whole service.
-- Add metadata needed for logs/alerts, but avoid leaking secrets.
-- Validate all external inputs (`HTTP`, env vars, queues, files).
-- Keep one consistent propagation rule per layer.
-
-## Common anti-patterns / pitfalls
-
-- Catching and swallowing errors.
-- Throwing raw strings instead of `Error` objects.
-- Returning unvalidated `JSON.parse` data as trusted types.
-- Mapping every failure to `500` with no context.
-
-## Short practice tasks
-
-1. Introduce an `AppError` type in one module and replace string throws.
-2. Add a Zod schema to validate one incoming payload before business logic.
-3. Implement `toHttpStatus(error)` and map at least 3 typed error kinds.
-4. Audit one catch block and remove swallowed errors.
+1. Update one `catch` block to narrow `error: unknown` with `instanceof Error`.
+2. Add an `AppError` with at least three kinds (`validation`, `not_found`, `dependency`).
+3. Validate one incoming HTTP payload with Zod before business logic.
+4. Implement `toHttpStatus(error)` and decide where to rethrow vs handle locally in one flow.
 
 Next: [07-express-basics.md](./07-express-basics.md)
