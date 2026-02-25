@@ -39,7 +39,7 @@ Use this loop for each lesson:
 3. **Test** success and failure paths with realistic inputs.
 4. **Operate** it: add logs/metrics, think through retries, and deployment behavior.
 
-## Study Order (~7h55m+)
+## Study Order (~8h25m+)
 
 | #  | Lesson                  | Time   | What You'll Learn                        |
 |----|-------------------------|--------|------------------------------------------|
@@ -56,7 +56,8 @@ Use this loop for each lesson:
 | 10 | [GraphQL Basics](lessons/10-graphql-basics.md) | 20 min | Schema, queries, mutations, resolvers |
 | 11 | [Observability Basics](lessons/11-observability-basics.md) | 25 min | Logs, metrics, traces, Sentry, OpenTelemetry, alerts |
 | 12 | [Workflow Orchestration](lessons/12-workflow-orchestration.md) | 30 min | Durable workflows, retries, cancellation/resume, resilience patterns |
-| 13 | [Microservices and DevOps](lessons/13-microservices-devops.md) | 30 min | Monolith vs microservices, resilience, CI/CD, platforms, SLOs, security |
-| 14 | [Essential Libraries](lessons/14-essential-libraries.md) | 25 min | React, Tailwind, Prisma, OpenAI, and more |
-| 15 | [NestJS](lessons/15-nestjs.md) | 35 min | Structured framework with DI, modules, decorators — Flutter patterns on the backend |
-| 16 | [Exercises](lessons/16-exercises.md) | 60+ min | End-to-end drills to combine typing, reliability, and operations thinking |
+| 13 | [Redis & BullMQ](lessons/13-redis-bullmq.md) | 30 min | In-memory caching, job queues, pub/sub, rate limiting, workflow chaining |
+| 14 | [Microservices and DevOps](lessons/14-microservices-devops.md) | 30 min | Monolith vs microservices, resilience, CI/CD, platforms, SLOs, security |
+| 15 | [Essential Libraries](lessons/15-essential-libraries.md) | 25 min | React, Tailwind, Prisma, OpenAI, and more |
+| 16 | [NestJS](lessons/16-nestjs.md) | 35 min | Structured framework with DI, modules, decorators — Flutter patterns on the backend |
+| 17 | [Exercises](lessons/17-exercises.md) | 60+ min | End-to-end drills to combine typing, reliability, and operations thinking |

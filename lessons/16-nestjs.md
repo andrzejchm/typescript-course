@@ -1,4 +1,4 @@
-# 15 - NestJS — Structured Backend Framework
+# 16 - NestJS — Structured Backend Framework
 
 NestJS adds structure, dependency injection, modules, and decorators on top of Express. If Express is raw `CustomPainter`, NestJS is Flutter — you can do everything manually, but the framework gives you conventions that scale with team size.
 
@@ -981,5 +981,5 @@ Flutter mapping:
 
 ---
 
-**Previous:** [14-essential-libraries.md](./14-essential-libraries.md) - Essential Libraries  
-**Next:** [16-exercises.md](./16-exercises.md) - Production Exercises
+**Previous:** [15-essential-libraries.md](./15-essential-libraries.md) - Essential Libraries  
+**Next:** [17-exercises.md](./17-exercises.md) - Production Exercises

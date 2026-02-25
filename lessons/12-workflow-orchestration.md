@@ -327,4 +327,4 @@ Useful analogy for onboarding, but backend behavior must be designed for process
 ---
 
 **Previous:** [11-observability-basics.md](./11-observability-basics.md) - Observability Basics  
-**Next:** [13-microservices-devops.md](./13-microservices-devops.md) - Microservices and DevOps
+**Next:** [13-redis-bullmq.md](./13-redis-bullmq.md) - Redis & BullMQ
