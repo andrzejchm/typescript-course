@@ -1,4 +1,4 @@
-# 11 - PostgreSQL Basics
+# 08 - PostgreSQL Basics
 
 PostgreSQL is the core persistence layer for many production systems. This lesson covers practical fundamentals: modeling data, writing safe queries, indexing correctly, running transactions, reading query plans, and evolving schema without downtime.
 
@@ -233,4 +233,4 @@ PostgreSQL reliability comes from discipline in migrations, indexing, and transa
 ---
 
 **Previous:** [07-express-basics.md](./07-express-basics.md) - Express Basics  
-**Next:** [12-backend-concepts.md](./12-backend-concepts.md) - Backend Concepts
+**Next:** [09-backend-concepts.md](./09-backend-concepts.md) - Backend Concepts

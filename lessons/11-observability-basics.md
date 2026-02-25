@@ -1,4 +1,4 @@
-# 13 - Observability Basics for Production Services
+# 11 - Observability Basics for Production Services
 
 Observability is how your team answers, in minutes, these production questions:
 
@@ -268,5 +268,5 @@ Use the analogy to onboard mobile-heavy teams, but keep production decisions bas
 
 ---
 
-**Previous:** [09-graphql-basics.md](./09-graphql-basics.md) - GraphQL Basics  
-**Next:** [14-workflow-orchestration.md](./14-workflow-orchestration.md) - Workflow Orchestration
+**Previous:** [10-graphql-basics.md](./10-graphql-basics.md) - GraphQL Basics  
+**Next:** [12-workflow-orchestration.md](./12-workflow-orchestration.md) - Workflow Orchestration

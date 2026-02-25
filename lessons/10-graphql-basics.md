@@ -1,4 +1,4 @@
-# 09 - GraphQL Basics
+# 10 - GraphQL Basics
 
 GraphQL is a contract-first API layer where clients request exactly the fields they need from a single endpoint. In production, GraphQL succeeds when the schema is governed carefully and resolver performance is managed deliberately.
 
@@ -226,5 +226,5 @@ Choose the transport that matches client needs and operational maturity.
 
 ---
 
-**Previous:** [12-backend-concepts.md](./12-backend-concepts.md) - Backend Concepts  
-**Next:** [13-observability-basics.md](./13-observability-basics.md) - Observability Basics
+**Previous:** [09-backend-concepts.md](./09-backend-concepts.md) - Backend Concepts  
+**Next:** [11-observability-basics.md](./11-observability-basics.md) - Observability Basics

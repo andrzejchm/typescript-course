@@ -41,12 +41,6 @@ Use this loop for each lesson:
 
 ## Study Order (~7h55m+)
 
-Lessons are numbered by topic, not study order. Follow the sequence below for production systems fluency:
-
-- **Foundation**: lessons 00 → 01 → 02 → 03 → 04 → 05 → 06 → 07
-- **System-building topics**: 07 → 11 → 12 → 09 → 13 → 14 → 15 → 10 → 16
-- **Capstone**: lesson 08 (after 16)
-
 | #  | Lesson                  | Time   | What You'll Learn                        |
 |----|-------------------------|--------|------------------------------------------|
 | 00 | [Setup](lessons/00-setup.md) | 15 min | Node, npm, tooling — the Dart equivalents |
@@ -57,12 +51,12 @@ Lessons are numbered by topic, not study order. Follow the sequence below for pr
 | 05 | [Interfaces & Generics](lessons/05-interfaces-generics.md) | 30 min | Interfaces, type aliases, generics |
 | 06 | [Error Handling](lessons/06-error-handling.md) | 20 min | try/catch, custom errors, Result pattern |
 | 07 | [Express Basics](lessons/07-express-basics.md) | 25 min | HTTP server, routes, middleware |
-| 11 | [PostgreSQL Basics](lessons/11-postgresql-basics.md) | 25 min | SQL CRUD, `pg` driver, tables, relationships |
-| 12 | [Backend Concepts](lessons/12-backend-concepts.md) | 30 min | N+1, CORS, REST, auth, caching, streaming, workflows |
-| 09 | [GraphQL Basics](lessons/09-graphql-basics.md) | 20 min | Schema, queries, mutations, resolvers |
-| 13 | [Observability Basics](lessons/13-observability-basics.md) | 25 min | Logs, metrics, traces, Sentry, OpenTelemetry, alerts |
-| 14 | [Workflow Orchestration](lessons/14-workflow-orchestration.md) | 30 min | Durable workflows, retries, cancellation/resume, resilience patterns |
-| 15 | [Microservices and DevOps](lessons/15-microservices-devops.md) | 30 min | Monolith vs microservices, resilience, CI/CD, platforms, SLOs, security |
-| 10 | [Essential Libraries](lessons/10-essential-libraries.md) | 25 min | React, Tailwind, Prisma, OpenAI, and more |
-| 16 | [NestJS](lessons/16-nestjs.md) | 35 min | Structured framework with DI, modules, decorators — Flutter patterns on the backend |
-| 08 | [Exercises](lessons/08-exercises.md) | 60+ min | End-to-end drills to combine typing, reliability, and operations thinking |
+| 08 | [PostgreSQL Basics](lessons/08-postgresql-basics.md) | 25 min | SQL CRUD, `pg` driver, tables, relationships |
+| 09 | [Backend Concepts](lessons/09-backend-concepts.md) | 30 min | N+1, CORS, REST, auth, caching, streaming, workflows |
+| 10 | [GraphQL Basics](lessons/10-graphql-basics.md) | 20 min | Schema, queries, mutations, resolvers |
+| 11 | [Observability Basics](lessons/11-observability-basics.md) | 25 min | Logs, metrics, traces, Sentry, OpenTelemetry, alerts |
+| 12 | [Workflow Orchestration](lessons/12-workflow-orchestration.md) | 30 min | Durable workflows, retries, cancellation/resume, resilience patterns |
+| 13 | [Microservices and DevOps](lessons/13-microservices-devops.md) | 30 min | Monolith vs microservices, resilience, CI/CD, platforms, SLOs, security |
+| 14 | [Essential Libraries](lessons/14-essential-libraries.md) | 25 min | React, Tailwind, Prisma, OpenAI, and more |
+| 15 | [NestJS](lessons/15-nestjs.md) | 35 min | Structured framework with DI, modules, decorators — Flutter patterns on the backend |
+| 16 | [Exercises](lessons/16-exercises.md) | 60+ min | End-to-end drills to combine typing, reliability, and operations thinking |

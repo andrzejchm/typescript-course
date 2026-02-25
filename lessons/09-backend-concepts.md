@@ -1,4 +1,4 @@
-# 12 - Backend Concepts Playbook
+# 09 - Backend Concepts Playbook
 
 This playbook covers recurring backend decisions in production systems: performance pitfalls, consistency models, caching, queueing, and failure handling. Use it as a decision guide when designing or reviewing services.
 
@@ -191,5 +191,5 @@ If a service is functionally correct but operationally opaque, it is not product
 
 ---
 
-**Previous:** [11-postgresql-basics.md](./11-postgresql-basics.md) - PostgreSQL Basics  
-**Next:** [09-graphql-basics.md](./09-graphql-basics.md) - GraphQL Basics
+**Previous:** [08-postgresql-basics.md](./08-postgresql-basics.md) - PostgreSQL Basics  
+**Next:** [10-graphql-basics.md](./10-graphql-basics.md) - GraphQL Basics

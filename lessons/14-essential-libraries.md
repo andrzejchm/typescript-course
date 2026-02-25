@@ -1,4 +1,4 @@
-# 10 - Essential Libraries
+# 14 - Essential Libraries
 
 This lesson organizes the TypeScript backend ecosystem by responsibility, not hype. Pick tools that reduce risk in production and make operational behavior explicit.
 
@@ -191,5 +191,5 @@ This baseline covers most backend services without premature complexity.
 
 ---
 
-**Previous:** [15-microservices-devops.md](./15-microservices-devops.md) - Microservices and DevOps  
-**Next:** [16-nestjs.md](./16-nestjs.md) - NestJS
+**Previous:** [13-microservices-devops.md](./13-microservices-devops.md) - Microservices and DevOps  
+**Next:** [15-nestjs.md](./15-nestjs.md) - NestJS

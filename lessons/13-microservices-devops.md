@@ -1,4 +1,4 @@
-# 15 - Microservices and DevOps for TypeScript Production Systems
+# 13 - Microservices and DevOps for TypeScript Production Systems
 
 This lesson focuses on operating real services: architecture decisions, delivery safety, runtime operations, and cost control.
 
@@ -239,5 +239,5 @@ Useful for communication across teams, but production architecture should always
 
 ---
 
-**Previous:** [14-workflow-orchestration.md](./14-workflow-orchestration.md) - Workflow Orchestration  
-**Next:** [10-essential-libraries.md](./10-essential-libraries.md) - Essential Libraries
+**Previous:** [12-workflow-orchestration.md](./12-workflow-orchestration.md) - Workflow Orchestration  
+**Next:** [14-essential-libraries.md](./14-essential-libraries.md) - Essential Libraries

@@ -1,4 +1,4 @@
-# 14 - Workflow Orchestration in TypeScript
+# 12 - Workflow Orchestration in TypeScript
 
 Workflow orchestration is what you use when business processes outlive a single process lifetime.
 
@@ -326,5 +326,5 @@ Useful analogy for onboarding, but backend behavior must be designed for process
 
 ---
 
-**Previous:** [13-observability-basics.md](./13-observability-basics.md) - Observability Basics  
-**Next:** [15-microservices-devops.md](./15-microservices-devops.md) - Microservices and DevOps
+**Previous:** [11-observability-basics.md](./11-observability-basics.md) - Observability Basics  
+**Next:** [13-microservices-devops.md](./13-microservices-devops.md) - Microservices and DevOps
