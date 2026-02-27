@@ -1,4 +1,4 @@
-# Lesson 17: Production Exercises
+# Lesson 19: Production Exercises
 
 Build this sequence as one progressive backend project. Each phase adds production concerns, not just language features.
 
@@ -190,4 +190,4 @@ The goal is not just code that works locally; the goal is code that can run safe
 
 ---
 
-**Previous:** [16-nestjs.md](./16-nestjs.md) - NestJS
+**Previous:** [18-infrastructure-as-code.md](./18-infrastructure-as-code.md) - Infrastructure as Code

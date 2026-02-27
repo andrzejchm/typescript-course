@@ -39,7 +39,7 @@ Use this loop for each lesson:
 3. **Test** success and failure paths with realistic inputs.
 4. **Operate** it: add logs/metrics, think through retries, and deployment behavior.
 
-## Study Order (~8h25m+)
+## Study Order (~9h20m+)
 
 | #  | Lesson                  | Time   | What You'll Learn                        |
 |----|-------------------------|--------|------------------------------------------|
@@ -60,4 +60,6 @@ Use this loop for each lesson:
 | 14 | [Microservices and DevOps](lessons/14-microservices-devops.md) | 30 min | Monolith vs microservices, resilience, CI/CD, platforms, SLOs, security |
 | 15 | [Essential Libraries](lessons/15-essential-libraries.md) | 25 min | React, Tailwind, Prisma, OpenAI, and more |
 | 16 | [NestJS](lessons/16-nestjs.md) | 35 min | Structured framework with DI, modules, decorators — Flutter patterns on the backend |
-| 17 | [Exercises](lessons/17-exercises.md) | 60+ min | End-to-end drills to combine typing, reliability, and operations thinking |
+| 17 | [Cloud & GCP](lessons/17-cloud-gcp.md) | 30 min | GCP services, Compute Engine, Cloud SQL, Storage, IAM, cost planning |
+| 18 | [Infrastructure as Code](lessons/18-infrastructure-as-code.md) | 30 min | Terraform, HCL, state, modules, Pulumi comparison, CI/CD for infra |
+| 19 | [Exercises](lessons/19-exercises.md) | 60+ min | End-to-end drills to combine typing, reliability, and operations thinking |
